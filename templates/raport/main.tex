@@ -1,0 +1,45 @@
+\documentclass[a4paper,11pt]{article}
+%%PREAMBLE%%
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[hidelinks]{hyperref}
+
+\title{Tytuł raportu}
+\author{Autor}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Wstęp}
+Cel ćwiczenia i krótki opis~\cite{knuth1984}.
+
+\section{Wyniki}
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lrr}
+    \toprule
+    Próba & Wartość & Błąd \\
+    \midrule
+    A & 1,23 & 0,01 \\
+    B & 4,56 & 0,02 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Wyniki pomiarów.}
+  \label{tab:wyniki}
+\end{table}
+
+Zależność opisuje równanie
+\begin{equation}
+  y = a x + b .
+  \label{eq:prosta}
+\end{equation}
+
+\section{Wnioski}
+Wyniki z tabeli~\ref{tab:wyniki} potwierdzają równanie~\eqref{eq:prosta}.
+
+\bibliographystyle{plain}
+\bibliography{bibliografia}
+\end{document}

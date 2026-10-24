@@ -1,0 +1,114 @@
+note: "version 2" Tectonic command-line interface activated
+note: Running TeX ...
+error: main.tex:3: ! LaTeX Error: File `pakietktoregoniema.sty' not found.
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: LaTeX Error: The package . failed to load.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+note: Rerunning TeX because "main.aux" changed ...
+error: main.tex:3: ! LaTeX Error: File `pakietktoregoniema.sty' not found.
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: LaTeX Error: The package . failed to load.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+error: main.tex:3: Undefined control sequence
+warning: errors were issued by the TeX engine, but were ignored; use --print and/or --keep-logs for details.
+note: Running xdvipdfmx ...
+note: Writing `/tmp/build/main.pdf` (2.2216796875 KiB)
+note: Writing `/tmp/build/main.log` (22.138671875 KiB)
+note: Skipped writing 1 intermediate files (use --keep-intermediates to keep them)

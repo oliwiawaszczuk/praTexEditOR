@@ -1,0 +1,44 @@
+[package]
+name = "pratex"
+version = "0.0.1"
+description = "praTexEditOR — desktop LaTeX editor"
+authors = ["praoliwia"]
+edition = "2021"
+
+[lib]
+# `_lib` suffix avoids a bin/lib name clash on Windows (cargo#8519).
+name = "pratex_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# wait() in one thread, kill() from another (cancel / app exit) without polling
+shared_child = "1"
+# Raw notify + our own channel debounce: the debouncer crates tick a thread every
+# timeout/4 even when idle; ours sleeps on recv() until something changes.
+notify = "8"
+trash = "5"
+# doc.synctex.gz (same zlib-rs backend as zip).
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+# Import only (Overleaf exports) → decompression, no zopfli encoder.
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+# Process-group kill of a cancelled build (latexmk → pdflatex → bibtex).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

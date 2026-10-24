@@ -1,0 +1,23 @@
+\documentclass[a4paper,12pt,twoside,openright]{report}
+%%PREAMBLE%%
+\usepackage[inner=3cm,outer=2cm,top=2.5cm,bottom=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\graphicspath{{img/}}
+\usepackage{booktabs}
+\usepackage[hidelinks]{hyperref}
+
+\title{Tytuł pracy}
+\author{Imię Nazwisko}
+\date{\the\year}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\input{rozdzialy/01-wstep}
+\input{rozdzialy/02-metody}
+
+\bibliographystyle{plain}
+\bibliography{bibliografia}
+\end{document}

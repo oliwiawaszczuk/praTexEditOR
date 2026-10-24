@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+*.app
+
+# Node / SvelteKit
+node_modules/
+app/build/
+app/.svelte-kit/
+
+# Rust / Tauri
+app/src-tauri/target/
+app/src-tauri/gen/schemas/
+# Tectonic binaries are downloaded per platform by scripts/fetch-tectonic.sh
+app/src-tauri/binaries/
+
+# IDE / Claude
+.idea/
+.vscode/
+.claude/settings.local.json
+
+# Logs
+*.log

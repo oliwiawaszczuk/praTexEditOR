@@ -1,0 +1,9 @@
+% Works with the built-in Tectonic (XeTeX) and with pdfLaTeX/LuaLaTeX via latexmk.
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+\else
+  \usepackage{fontspec}
+\fi
+\usepackage[polish]{babel}

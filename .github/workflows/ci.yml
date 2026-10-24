@@ -1,0 +1,72 @@
+name: CI
+
+# Fast checks on every push / PR: frontend type-check + tests, Rust clippy + tests, and
+# a real Tectonic compile on all three systems. Full bundles live in release.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+
+  rust:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+      # generate_context! needs the frontend dist dir; externalBin needs the binary.
+      - run: mkdir -p app/build
+      - run: ./scripts/fetch-tectonic.sh
+      - run: cargo clippy --manifest-path app/src-tauri/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path app/src-tauri/Cargo.toml
+
+  tectonic:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            triple: aarch64-apple-darwin
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+          - os: ubuntu-22.04
+            triple: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: ./scripts/fetch-tectonic.sh ${{ matrix.triple }}
+      - name: Compile "Hello, świat" with the bundled engine
+        shell: bash
+        run: ./scripts/smoke-tectonic.sh app/src-tauri/binaries/tectonic-${{ matrix.triple }}

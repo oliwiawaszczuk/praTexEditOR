@@ -1,0 +1,15 @@
+note: "version 2" Tectonic command-line interface activated
+note: Running TeX ...
+error: rozdzialy/01-metody:3: Undefined control sequence
+error: rozdzialy/01-metody:5: Missing $ inserted
+warning: main.tex:8: Overfull \hbox (202.6165pt too wide) detected at line 8
+note: Rerunning TeX because "main.out" changed ...
+error: rozdzialy/01-metody:3: Undefined control sequence
+error: rozdzialy/01-metody:5: Missing $ inserted
+warning: main.tex:8: Overfull \hbox (202.6165pt too wide) detected at line 8
+warning: errors were issued by the TeX engine, but were ignored; use --print and/or --keep-logs for details.
+note: Running xdvipdfmx ...
+note: Writing `/tmp/build/main.log` (9.818359375 KiB)
+note: Writing `/tmp/build/main.synctex.gz` (1.1083984375 KiB)
+note: Writing `/tmp/build/main.pdf` (12.8046875 KiB)
+note: Skipped writing 2 intermediate files (use --keep-intermediates to keep them)
