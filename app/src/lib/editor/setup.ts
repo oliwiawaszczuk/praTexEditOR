@@ -25,6 +25,7 @@ import {
 import { runCommand } from "#lib/core/commands.svelte.ts";
 import { isMac } from "#lib/core/keys.ts";
 import { language, type LangId } from "./language.ts";
+import { colorSwatches } from "./colors.ts";
 import { completion } from "./complete.ts";
 import { imageHover } from "./hover.ts";
 import { flashField } from "./marks.ts";
@@ -134,7 +135,7 @@ export function extensions(lang: LangId, hooks: Hooks): Extension[] {
     Prec.high(escapedDollar),
     syncClick,
     pasteImage,
-    lang === "latex" ? [completion(), imageHover] : [],
+    lang === "latex" ? [completion(), imageHover, colorSwatches] : [],
     rectangularSelection(),
     crosshairCursor(),
     highlightActiveLine(),

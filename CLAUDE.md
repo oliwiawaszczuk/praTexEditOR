@@ -131,6 +131,10 @@ app/src/lib/
   `build-progress`/`build-done`, diagnostyki z `window.__diags`), `convertFileSrc` → `/__mock/…`
   (Playwright `route` podaje prawdziwy PDF); serwer: `pnpm exec vite preview --port 4173`.
 
+- Kolory: jedyny popover to `ui/ColorPopupHost` (otwierany przez `openColor()`); przycisk-próbka to
+  `ui/ColorPicker`, w kodzie LaTeX próbki rysuje `editor/colors.ts` (`{HTML}{…}`, `{RGB}{…}`, `{rgb}{…}`).
+  Nowe pole z kolorem = `ColorPicker`, nigdy `<input type="color">`.
+
 ## Kompilacja i PDF (KONWENCJE)
 
 - Wynik kompilacji zawsze w `<cache>/build/<pid>/` (`doc.pdf`, `doc.log`, `doc.synctex.gz`; outdiry

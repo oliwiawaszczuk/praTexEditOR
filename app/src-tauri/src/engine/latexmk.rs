@@ -121,6 +121,29 @@ pub fn command(bin: &Path, flag: &str, main: &Path, outdir: &Path) -> Command {
     cmd
 }
 
+/// One bare pass of the engine itself (no latexmk, no bibliography, no reruns) into the
+/// same `outdir` latexmk uses, so references and citations still come from the aux/bbl
+/// of the last full build. This is the typing preview: about half the time of a full run.
+pub fn command_live(engine: &Path, main: &Path, outdir: &Path) -> Command {
+    let mut cmd = Command::new(engine);
+    cmd.args(["-interaction=nonstopmode", "-file-line-error", "-synctex=1"])
+        .arg(format!("-output-directory={}", outdir.display()))
+        .arg(main.file_name().unwrap_or_default());
+    if let Some(dir) = main.parent().filter(|d| !d.as_os_str().is_empty()) {
+        cmd.current_dir(dir);
+    }
+    if let Some(texbin) = engine.parent() {
+        let mut paths = vec![texbin.to_path_buf()];
+        if let Some(p) = std::env::var_os("PATH") {
+            paths.extend(std::env::split_paths(&p));
+        }
+        if let Ok(joined) = std::env::join_paths(paths) {
+            cmd.env("PATH", joined);
+        }
+    }
+    cmd
+}
+
 /// pdfLaTeX writes `outdir/<sub>/x.aux` for `\include{sub/x}` and fails when `<sub>`
 /// does not exist there: mirror the source folders (shallow, no hidden/ignored ones).
 pub fn mirror_dirs(src: &Path, outdir: &Path, depth: usize) {

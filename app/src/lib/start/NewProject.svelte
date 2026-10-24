@@ -2,7 +2,8 @@
   // New project: three big tiles (template / folder / zip), then one small step.
   import { onMount, tick } from "svelte";
   import { call } from "#lib/core/tauri.ts";
-  import ColorPicker from "#lib/ui/ColorPicker.svelte";
+  import { onColor } from "#lib/ui/color.ts";
+  import { closeColor, colorRequest, openColor } from "#lib/ui/colorPopup.svelte.ts";
   import { openMenu } from "#lib/ui/contextMenu.svelte.ts";
   import {
     baseName,
@@ -47,6 +48,15 @@
   let color = $state(nextColor());
   let busy = $state(false);
   let nameInput = $state<HTMLInputElement>();
+  let customBtn = $state<HTMLButtonElement>();
+  let customId = $state(0);
+  const custom = $derived(!PROJECT_COLORS.includes(color));
+  const customOpen = $derived(customId !== 0 && colorRequest()?.id === customId);
+
+  function openCustom(): void {
+    if (customOpen) return closeColor();
+    customId = openColor({ anchor: customBtn!.getBoundingClientRect(), value: color, onchange: (c) => (color = c), presets: PROJECT_COLORS, label: "Własny kolor" });
+  }
 
   onMount(async () => {
     templates = await templatesList().catch(() => []);
@@ -154,9 +164,27 @@
     <span class="k"><Icon name="palette" size={15} /></span>
     <div class="colors">
       {#each PROJECT_COLORS as c (c)}
-        <button class="color" class:on={c === color} style:background={c} aria-label={c} onclick={() => (color = c)}></button>
+        <button class="color" class:on={c === color} style:background={c} style:--ink={onColor(c)} aria-label={c} onclick={() => (color = c)}>
+          {#if c === color}<Icon name="check" size={12} />{/if}
+        </button>
       {/each}
-      <ColorPicker value={color} onchange={(c) => (color = c)} presets={PROJECT_COLORS} label="Własny kolor" size={18} round />
+      <span class="vsep"></span>
+      <!-- Own color: a rainbow ring with a pipette until one is chosen, then that color. -->
+      <button
+        bind:this={customBtn}
+        class="color custom"
+        class:on={custom}
+        class:open={customOpen}
+        data-color-trigger
+        style:--ink={onColor(color)}
+        style:background={custom ? color : undefined}
+        aria-label="Własny kolor"
+        use:tip={custom ? `Własny kolor ${color}` : "Własny kolor…"}
+        onclick={openCustom}
+      >
+        <Icon name={custom ? "check" : "dropper"} size={custom ? 12 : 11} />
+      </button>
+      {#if custom}<code class="hex">{color}</code>{/if}
     </div>
   </div>
 {/snippet}
@@ -351,22 +379,60 @@
   }
   .colors {
     display: flex;
-    gap: 8px;
+    align-items: center;
+    gap: 9px;
   }
   .color {
-    width: 18px;
-    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    color: var(--ink, #111);
+    border: 0;
     border-radius: 50%;
-    border: 2px solid transparent;
     cursor: pointer;
-    transition: transform var(--t-fast);
+    transition:
+      transform var(--t-fast),
+      box-shadow var(--t-fast);
   }
   .color:hover {
     transform: scale(1.15);
   }
+  /* chosen: a ring around the dot, separated by a gap, plus a check inside */
   .color.on {
-    border-color: var(--text-strong);
-    box-shadow: 0 0 0 2px var(--bg-panel) inset;
+    box-shadow:
+      0 0 0 2px var(--bg-panel),
+      0 0 0 4px var(--text-strong);
+  }
+  .vsep {
+    width: 1px;
+    height: 18px;
+    background: var(--line-3);
+  }
+  .color.custom {
+    color: #111;
+    background: conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  }
+  .color.custom.on {
+    color: var(--ink);
+  }
+  .color.custom.open {
+    box-shadow:
+      0 0 0 2px var(--bg-panel),
+      0 0 0 4px var(--accent);
+  }
+  .hex {
+    font-family: var(--font);
+    font-size: var(--fs-sm);
+    color: var(--text-dim-2);
+    text-transform: lowercase;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .color {
+      transition: none;
+    }
   }
   .go {
     align-self: flex-end;

@@ -1,6 +1,8 @@
 //! Project builds (docs/02-plan.md §3.1): a coalescing queue — at most one build per
 //! project; a request that arrives meanwhile marks it dirty and exactly one more build
-//! follows (a nearly finished build is never killed). Everything the engine writes stays
+//! follows. A full build is never killed; a *live* pass (typing preview) is stale the
+//! moment newer text exists, so a new request kills it and the newest one runs instead.
+//! Everything the engine writes stays
 //! in `<cache>/build/<pid>/`; the user's folders only get a PDF when asked to.
 //!
 //! Layout of `<cache>/build/<pid>/`:
@@ -46,6 +48,11 @@ pub struct BuildOpts {
     /// Also copy an error-free PDF next to the main file.
     #[serde(default)]
     pub copy_pdf: bool,
+    /// Live preview while typing: one bare pass of the engine (no bibliography, no
+    /// reruns — it reads the aux files of the last full build). Only for system TeX;
+    /// Tectonic always does its full run.
+    #[serde(default)]
+    pub live: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -80,6 +87,8 @@ pub struct BuildProgress {
 #[derive(Default)]
 struct Slot {
     running: bool,
+    /// The running build is a live pass (a newer request replaces it at once).
+    live_running: bool,
     again: Option<BuildOpts>,
     killer: Option<Arc<Killer>>,
     last: Option<BuildResult>,
@@ -214,7 +223,19 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
             if let Some(src) = main.parent() {
                 latexmk::mirror_dirs(src, &work, 4);
             }
-            (latexmk::command(&bin, flag, &main, &work), work)
+            if opts.live {
+                let tex = bin.parent().map(|d| d.join(match engine {
+                    Engine::Pdflatex => "pdflatex",
+                    Engine::Xelatex => "xelatex",
+                    _ => "lualatex",
+                }));
+                match tex.filter(|t| t.is_file()) {
+                    Some(t) => (latexmk::command_live(&t, &main, &work), work),
+                    None => (latexmk::command(&bin, flag, &main, &work), work),
+                }
+            } else {
+                (latexmk::command(&bin, flag, &main, &work), work)
+            }
         }
     };
 
@@ -312,7 +333,7 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
         });
     }
 
-    if fresh && errors == 0 && opts.copy_pdf {
+    if fresh && errors == 0 && opts.copy_pdf && !opts.live {
         let _ = put(&build.join("doc.pdf"), &main.with_extension("pdf"), true);
     }
     Run {
@@ -356,10 +377,12 @@ fn worker(app: AppHandle, pid: String, mut opts: BuildOpts, mut killer: Arc<Kill
                 Some(o) => {
                     let k = Arc::new(Killer::default());
                     slot.killer = Some(k.clone());
+                    slot.live_running = o.live;
                     Some((o, k))
                 }
                 None => {
                     slot.running = false;
+                    slot.live_running = false;
                     slot.killer = None;
                     None
                 }
@@ -381,10 +404,21 @@ pub fn build_request(app: AppHandle, builds: State<'_, Builds>, pid: String, opt
     let mut map = builds.0.lock().map_err(err)?;
     let slot = map.entry(pid.clone()).or_default();
     if slot.running {
-        slot.again = Some(opts);
+        // A queued full build is never downgraded to a live one.
+        let queued_full = slot.again.as_ref().is_some_and(|a| !a.live);
+        if !(opts.live && queued_full) {
+            slot.again = Some(opts);
+        }
+        // The running live pass is already stale: stop it, the queued request runs next.
+        if slot.live_running {
+            if let Some(k) = &slot.killer {
+                k.kill();
+            }
+        }
         return Ok(());
     }
     slot.running = true;
+    slot.live_running = opts.live;
     let killer = Arc::new(Killer::default());
     slot.killer = Some(killer.clone());
     drop(map);

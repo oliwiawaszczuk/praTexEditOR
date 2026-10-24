@@ -2,6 +2,10 @@
 // Workspace ({#key}). Saves come back from the watcher as `fs-changed` like any change
 // made outside, so one path covers both: a short pause after the last change, then one
 // request — Rust coalesces requests that arrive while a build runs.
+//
+// With system TeX the pause starts a *live* pass (one bare engine run, no bibliography);
+// the full build (latexmk: biber, reruns) follows once typing has stopped for a moment.
+// ⌘S / ⌘Enter, the first build and engine changes are always full.
 
 import { getSetting } from "#lib/core/appSettings.svelte.ts";
 import { register } from "#lib/core/commands.svelte.ts";
@@ -80,6 +84,7 @@ export class Build {
   #offs: (() => void)[] = [];
   #unlisten: Promise<() => void>[] = [];
   #timer: ReturnType<typeof setTimeout> | null = null;
+  #fullTimer: ReturnType<typeof setTimeout> | null = null;
   /** Our own ⌘S saves, already compiled: their watcher echo is skipped. */
   #echo = new Set<string>();
   #echoUntil = 0;
@@ -164,19 +169,29 @@ export class Build {
     for (const f of this.#offs) f();
     for (const u of this.#unlisten) void u.then((f) => f());
     if (this.#timer) clearTimeout(this.#timer);
+    if (this.#fullTimer) clearTimeout(this.#fullTimer);
+  }
+
+  /** Typing preview on (Ustawienia › Kompilacja) and an engine that can do a bare pass. */
+  get live(): boolean {
+    return this.engine !== "tectonic" && getSetting("build.live", true);
   }
 
   // ── Requests ───────────────────────────────────────────────────────────────
 
-  request(): void {
+  request(mode: "full" | "live" = "full"): void {
     if (this.#timer) clearTimeout(this.#timer);
     this.#timer = null;
+    if (mode === "full" && this.#fullTimer) {
+      clearTimeout(this.#fullTimer);
+      this.#fullTimer = null;
+    }
     if (!this.#project().main) {
       this.#done({ pid: this.pid, rev: this.last?.rev ?? 0, fresh: false, ok: false, cancelled: false, durationMs: 0, engine: this.engine, diagnostics: [], message: "Projekt nie ma pliku głównego — wskaż go w drzewie (menu pliku → ★)" });
       return;
     }
     if (this.phase === "idle") this.phase = "pending";
-    call("build_request", { pid: this.pid, opts: { engine: this.engine, copyPdf: getSetting("build.copyPdf", false) } }).catch((e) => {
+    call("build_request", { pid: this.pid, opts: { engine: this.engine, copyPdf: getSetting("build.copyPdf", false), live: mode === "live" } }).catch((e) => {
       this.phase = "idle";
       toast(String(e instanceof Error ? e.message : e), { icon: "alert", error: true });
     });
@@ -207,7 +222,17 @@ export class Build {
     });
     if (!relevant.length || !this.auto) return;
     if (this.#timer) clearTimeout(this.#timer);
-    this.#timer = setTimeout(() => this.request(), getSetting("build.delayMs", 200));
+    if (!this.live) {
+      this.#timer = setTimeout(() => this.request(), getSetting("build.delayMs", 200));
+      return;
+    }
+    this.#timer = setTimeout(() => this.request("live"), getSetting("build.delayMs", 200));
+    // The full build waits for a real pause in typing.
+    if (this.#fullTimer) clearTimeout(this.#fullTimer);
+    this.#fullTimer = setTimeout(() => {
+      this.#fullTimer = null;
+      this.request();
+    }, getSetting("build.fullMs", 2000));
   }
 
   #done(r: BuildResult): void {

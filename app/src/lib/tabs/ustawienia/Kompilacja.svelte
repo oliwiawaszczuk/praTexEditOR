@@ -27,6 +27,9 @@
   const engine = $derived(getSetting<EngineId>("build.engine", "tectonic"));
   const copyPdf = $derived(getSetting("build.copyPdf", false));
   const DELAYS = [0, 200, 600, 1500];
+  const live = $derived(getSetting("build.live", true));
+  const fullMs = $derived(getSetting("build.fullMs", 2000));
+  const FULLS = [1000, 2000, 4000, 8000];
 
   async function detect(refresh = false): Promise<void> {
     if (!inTauri()) return;
@@ -99,6 +102,26 @@
         {/each}
       </div>
     </div>
+    <div class="row">
+      <Icon name="engine" size={16} />
+      <span class="k">Podgląd na żywo podczas pisania</span>
+      <span class="hint">jeden szybki przebieg silnika; bibliografia i odnośniki dopiero w pełnej kompilacji (tylko TeX Live, nie Tectonic)</span>
+      {@render reset("build.live", true, live)}
+      <Toggle label="Podgląd na żywo" on={live} onchange={(v) => setSetting("build.live", v)} />
+    </div>
+    {#if live}
+      <div class="row">
+        <Icon name="pause" size={16} />
+        <span class="k">Pełna kompilacja po przerwie</span>
+        <span class="hint">po ostatniej zmianie; ⌘S robi ją od razu</span>
+        {@render reset("build.fullMs", 2000, fullMs)}
+        <div class="seg">
+          {#each FULLS as d (d)}
+            <button class:on={fullMs === d} onclick={() => setSetting("build.fullMs", d)}>{`${d / 1000} s`}</button>
+          {/each}
+        </div>
+      </div>
+    {/if}
     <div class="row">
       <Icon name="download" size={16} />
       <span class="k">Kopiuj PDF obok pliku głównego</span>

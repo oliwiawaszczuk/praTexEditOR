@@ -21,6 +21,7 @@
   import { isMac } from "#lib/core/keys.ts";
   import { closeProject, currentProject, flushProject, leaveProject, loadProjects, restoreLastProject } from "#lib/core/projects.svelte.ts";
   import { call, onCloseRequested, onOsDrag, onProjectMenu } from "#lib/core/tauri.ts";
+  import ColorPopupHost from "#lib/ui/ColorPopupHost.svelte";
   import ContextMenuHost from "#lib/ui/ContextMenuHost.svelte";
   import ProjectChip from "#lib/ui/ProjectChip.svelte";
   import { toast } from "#lib/ui/toast.svelte.ts";
@@ -279,6 +280,7 @@
 <LibraryModal />
 <FloatingNotePad />
 <ContextMenuHost />
+<ColorPopupHost />
 <DragGhost />
 <TooltipHost />
 <Toasts />
