@@ -18,6 +18,10 @@ export interface EditorBridge {
   insertAt(body: string, at?: { x: number; y: number }): boolean;
   /** Insert literal text at the selection (replacing it). False = no text editor. */
   insertText(text: string): boolean;
+  /** Is the cursor inside a formula (`$…$`, `\[…\]`, equation…)? */
+  inMath(): boolean;
+  /** Move the cursor by `delta` characters (negative = back). */
+  moveCursor(delta: number): void;
   /** Selected text of the visible file with its place (`plik.tex:12`), null when empty. */
   selection(): { text: string; source: string } | null;
   /** Undo the last edit of the visible file. */

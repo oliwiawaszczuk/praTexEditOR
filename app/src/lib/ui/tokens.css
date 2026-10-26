@@ -232,3 +232,9 @@ textarea {
   opacity: 0.35;
   cursor: default;
 }
+
+/* Keyboard focus is always visible (mouse clicks do not show it). */
+:where(button, [role="button"], [role="treeitem"], a, select, input):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

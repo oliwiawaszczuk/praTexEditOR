@@ -23,6 +23,8 @@ import type { BridgeDiagnostic, EditorBridge } from "./bridge.svelte.ts";
 import { diagnosticsSpec, revealLine } from "./marks.ts";
 import { openReplace, searchPanel } from "./searchPanel.ts";
 import { prefs } from "./prefs.ts";
+import { mathAt } from "./formula.ts";
+import { toggleSymbols } from "#lib/symbols/palette.svelte.ts";
 import { comp, extensions, prefEffects } from "./setup.ts";
 
 export interface Stamp {
@@ -126,6 +128,8 @@ export class Docs implements EditorBridge {
         { id: "editor.comment", title: "Zakomentuj / odkomentuj", icon: "snippet", keys: "mod+/", when: "editorFocus", group: "Edytor", run: () => (this.view ? toggleComment(this.view) : false) },
         { id: "editor.selectNext", title: "Zaznacz następne wystąpienie", icon: "selection", keys: "ctrl+g", when: "editorFocus", group: "Edytor", run: () => (this.view ? selectNextOccurrence(this.view) : false) },
         { id: "editor.duplicate", title: "Duplikuj linię / zaznaczenie", icon: "duplicate", keys: "mod+d", when: "editorFocus", group: "Edytor", run: () => (this.view ? duplicate(this.view) : false) },
+        { id: "insert.symbols", title: "Paleta symboli", icon: "omega", keys: "mod+shift+y", group: "Wstaw", run: () => (this.view ? toggleSymbols(document.querySelector(".ib-sym")) : false) },
+        { id: "editor.formulaPreview", title: "Podgląd wzoru pod kursorem", icon: "sigma", group: "Edytor", run: () => void setSetting("editor.formulaPreview", !getSetting("editor.formulaPreview", true)) },
         { id: "editor.toggleInsertBar", title: "Pasek „Wstaw”", icon: "layout", keys: "mod+shift+i", group: "Edytor", run: () => void setSetting("editor.insertBar", !getSetting("editor.insertBar", true)) },
       ]),
       onLeaveProject(() => this.flush()),
@@ -348,6 +352,18 @@ export class Docs implements EditorBridge {
     return true;
   }
 
+  inMath(): boolean {
+    const v = this.view;
+    return !!v && mathAt(v.state, v.state.selection.main.head) !== null;
+  }
+
+  moveCursor(delta: number): void {
+    const v = this.view;
+    if (!v) return;
+    const head = Math.max(0, Math.min(v.state.doc.length, v.state.selection.main.head + delta));
+    v.dispatch({ selection: { anchor: head } });
+  }
+
   selection(): { text: string; source: string } | null {
     const v = this.view;
     const d = this.#inView;
@@ -452,7 +468,10 @@ export class Docs implements EditorBridge {
   async reveal(path: string, line: number): Promise<void> {
     await this.open(path, { focus: true });
     const d = this.find(path);
-    if (d && this.#inView === d && this.view) revealLine(this.view, line);
+    if (d && this.#inView === d && this.view) {
+      revealLine(this.view, line);
+      this.view.focus();
+    }
   }
 
   toggleWrap(): boolean {

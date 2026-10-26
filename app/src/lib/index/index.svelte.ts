@@ -29,15 +29,26 @@ export interface BibItem {
   file: string;
 }
 
+export interface MacroItem {
+  name: string;
+  args: number;
+  /** First argument optional (`[2][default]`). */
+  optional: boolean;
+  body: string;
+  file: string;
+  line: number;
+}
+
 export interface Snapshot {
   outline: OutlineItem[];
   labels: LabelItem[];
   bib: BibItem[];
+  macros: MacroItem[];
   words: number;
   fileWords: Record<string, number>;
 }
 
-const EMPTY: Snapshot = { outline: [], labels: [], bib: [], words: 0, fileWords: {} };
+const EMPTY: Snapshot = { outline: [], labels: [], bib: [], macros: [], words: 0, fileWords: {} };
 const RELEVANT = /\.(tex|bib)$/i;
 
 export class ProjectIndex {

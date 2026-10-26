@@ -15,6 +15,7 @@
   import type { Docs } from "./docs.svelte.ts";
   import Crumbs from "./Crumbs.svelte";
   import InsertBar from "./InsertBar.svelte";
+  import SymbolPalette from "#lib/symbols/SymbolPalette.svelte";
   import TabBar from "./TabBar.svelte";
   import { dropTarget } from "#lib/tree/dnd.svelte.ts";
 
@@ -75,6 +76,7 @@
   {#if d?.kind === "text" && getSetting("editor.insertBar", true)}
     <InsertBar />
   {/if}
+  <SymbolPalette />
 
   {#if d?.kind === "text"}
     <Crumbs {docs} />

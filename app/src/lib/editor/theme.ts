@@ -71,6 +71,9 @@ export const editorTheme = EditorView.theme(
     // Index completions: bibliography / label cards and image thumbnails.
     ".cm-card": { padding: "8px 10px", fontSize: "var(--fs-sm)", color: "var(--text-dim-1)", lineHeight: "1.5", maxWidth: "380px" },
     ".cm-card b": { color: "var(--text-dim-3)", fontWeight: "500" },
+    // Formula preview (KaTeX) above the cursor.
+    ".cm-formula-tip": { padding: "8px 12px", maxWidth: "min(560px, 80vw)", maxHeight: "40vh", overflow: "auto", fontSize: "1.1em", color: "var(--text)" },
+    ".cm-formula-tip .katex-display": { margin: "0" },
     ".cm-thumb": { display: "block", maxWidth: "240px", maxHeight: "180px", margin: "6px", borderRadius: "4px" },
     // Paths of \input{…}: underlined with a hand while ⌘ is held (⌘+click opens the file).
     ".cm-cmd .cm-file-link": { textDecoration: "underline", textUnderlineOffset: "3px", cursor: "pointer" },

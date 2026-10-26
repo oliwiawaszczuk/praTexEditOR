@@ -6,9 +6,11 @@ kompilacja wbudowanym Tectonic.
 
 ## Stan
 
-E0 Fundament: powłoka aplikacji w stylu praSzczur, ustawienia, wbudowany silnik Tectonic
-z rozgrzewką przy pierwszym starcie, diagnostyka (Ustawienia › O aplikacji), CI na 3 systemy.
-Plan: `docs/02-plan.md`.
+Wersja 0.1: projekty z wieloma folderami, edytor CodeMirror 6, auto-kompilacja (Tectonic /
+latexmk), PDF z SyncTeX i ciemnym podglądem, snippety i paleta komend, indeks projektu
+(outline, `\ref`, `\cite`), Notatki, Tablica i szablony. Bez AI.
+Plan: `docs/02-plan.md`. Pomiary wydajności: `scripts/bench/gen-project.sh` generuje projekt
+syntetyczny (~200 stron, 100 obrazów).
 
 ## Rozwój
 

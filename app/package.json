@@ -29,6 +29,7 @@
     "@lezer/highlight": "^1.2.5",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-dialog": "^2.8.3",
+    "katex": "^0.19.1",
     "konva": "^10.9.0",
     "pdfjs-dist": "6.4.299"
   },

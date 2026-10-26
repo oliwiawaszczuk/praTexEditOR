@@ -1,5 +1,13 @@
 # Changelog
 
+## E8 Dopracowanie — w toku
+
+- **Ciemny PDF** (ikona księżyca w pasku PDF, komenda `pdf.tone`): „Papier nocny” (kolory tekstu
+  i linii w renderze pdf.js, obrazy bez zmian) i „Odwróć” (filtr CSS). Tylko podgląd, eksport bez zmian.
+- Szuflada diagnostyki otwiera się sama przy błędach i wsuwa się animacją.
+- ⌘+klik na własnej komendzie (`\arrow`) skacze do jej `\newcommand` w dowolnym pliku projektu.
+- Widoczny fokus klawiatury, `scripts/bench/gen-project.sh` (projekt do pomiarów §11), `README`.
+
 ## E5 Snippety + skróty + komendy — 2026-10-23
 
 - **Rejestr komend** (`core/commands.svelte.ts`) jako jedyne źródło akcji, ikon i skrótów. Jeden

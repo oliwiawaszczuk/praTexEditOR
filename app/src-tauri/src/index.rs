@@ -32,7 +32,72 @@ struct TexScan {
     items: Vec<(u32, Item)>,
     /// (key, line, context text of that line)
     labels: Vec<(String, u32, String)>,
+    /// `\newcommand` & co. defined in this file.
+    macros: Vec<(u32, Macro)>,
     words: u32,
+}
+
+/// A user command: `\newcommand{\name}[args][default]{body}` (also `\def`, `\DeclareMathOperator`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Macro {
+    pub name: String,
+    /// Number of arguments (`[2]` → 2, `\def\x#1#2` → 2).
+    pub args: u8,
+    /// First argument is optional (`[2][default]`).
+    pub optional: bool,
+    /// Start of the definition body, for the completion card.
+    pub body: String,
+}
+
+fn macro_name(s: &str) -> Option<(&str, &str)> {
+    let s = s.trim_start();
+    let s = s.strip_prefix('{').map(|r| r.trim_start()).unwrap_or(s);
+    let s = s.strip_prefix('\\')?;
+    let end = s.find(|c: char| !(c.is_ascii_alphabetic() || c == '@')).unwrap_or(s.len());
+    if end == 0 {
+        return None;
+    }
+    let rest = s[end..].trim_start();
+    Some((&s[..end], rest.strip_prefix('}').unwrap_or(rest)))
+}
+
+/// Macro definition at the start of a (comment-free) line, if any.
+fn parse_macro(line: &str) -> Option<Macro> {
+    let t = line.trim_start();
+    let body_of = |r: &str| -> String {
+        let r = r.trim_start();
+        r.strip_prefix('{').unwrap_or(r).chars().take(60).collect::<String>().trim_end().trim_end_matches('}').to_string()
+    };
+    for cmd in ["\\newcommand", "\\renewcommand", "\\providecommand", "\\DeclareRobustCommand"] {
+        if let Some(r) = t.strip_prefix(cmd) {
+            let (name, rest) = macro_name(r.strip_prefix('*').unwrap_or(r))?;
+            let mut rest = rest.trim_start();
+            let mut args = 0u8;
+            let mut optional = false;
+            if let Some(r) = rest.strip_prefix('[') {
+                let close = r.find(']')?;
+                args = r[..close].trim().parse().ok()?;
+                rest = r[close + 1..].trim_start();
+                if let Some(r) = rest.strip_prefix('[') {
+                    optional = true;
+                    rest = r.find(']').map(|c| r[c + 1..].trim_start()).unwrap_or("");
+                }
+            }
+            return Some(Macro { name: name.into(), args, optional, body: body_of(rest) });
+        }
+    }
+    if let Some(r) = t.strip_prefix("\\DeclareMathOperator") {
+        let (name, rest) = macro_name(r.strip_prefix('*').unwrap_or(r))?;
+        return Some(Macro { name: name.into(), args: 0, optional: false, body: body_of(rest) });
+    }
+    if let Some(r) = t.strip_prefix("\\def") {
+        let (name, rest) = macro_name(r)?;
+        let args = rest.chars().take_while(|c| *c == '#' || c.is_ascii_digit()).filter(|c| *c == '#').count() as u8;
+        let body = rest.find('{').map(|i| body_of(&rest[i..])).unwrap_or_default();
+        return Some(Macro { name: name.into(), args, optional: false, body });
+    }
+    None
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -255,6 +320,9 @@ fn scan_tex(text: &str) -> TexScan {
             }
             continue;
         }
+        if let Some(m) = parse_macro(line) {
+            out.macros.push((line_no, m));
+        }
         let cmds = commands(line);
         for (name, arg) in &cmds {
             match *name {
@@ -399,6 +467,15 @@ pub struct LabelItem {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MacroItem {
+    #[serde(flatten)]
+    pub item: Macro,
+    pub file: PathBuf,
+    pub line: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BibItem {
     #[serde(flatten)]
     pub entry: BibEntry,
@@ -411,6 +488,7 @@ pub struct Snapshot {
     pub outline: Vec<OutlineItem>,
     pub labels: Vec<LabelItem>,
     pub bib: Vec<BibItem>,
+    pub macros: Vec<MacroItem>,
     /// Words of the whole document (files reachable from the main file).
     pub words: u32,
     /// Words per file.
@@ -499,6 +577,9 @@ fn snapshot(project: &Project, cache: &HashMap<PathBuf, Cached>) -> Snapshot {
     for p in &order {
         if let Some(s) = tex.get(p) {
             snap.file_words.entry(p.clone()).or_insert(s.words);
+            for (line, m) in &s.macros {
+                snap.macros.push(MacroItem { item: m.clone(), file: p.clone(), line: *line });
+            }
             for (key, line, context) in &s.labels {
                 snap.labels.push(LabelItem { key: key.clone(), file: p.clone(), line: *line, context: context.clone() });
             }
@@ -808,6 +889,17 @@ mod tests {
     fn words_skip_preamble_commands_math_and_refs() {
         let t = "\\usepackage{amsmath}\nPreambuła nie liczy się\n\\begin{document}\nAla ma kota \\textbf{i psa} oraz $a+b$ \\ref{x} \\cite{y}.\n\\end{document}\n";
         assert_eq!(scan_tex(t).words, 6); // Ala ma kota i psa oraz
+    }
+
+    #[test]
+    fn parses_macro_definitions() {
+        let m = |l: &str| parse_macro(l).map(|m| (m.name, m.args, m.optional));
+        assert_eq!(m("\\newcommand{\\arrow}{$\\rightarrow$\\ }"), Some(("arrow".into(), 0, false)));
+        assert_eq!(m("\\newcommand{\\para}[2]{#1 i #2}"), Some(("para".into(), 2, false)));
+        assert_eq!(m("  \\renewcommand*\\x[1][dom]{#1}"), Some(("x".into(), 1, true)));
+        assert_eq!(m("\\def\\foo#1#2{a}"), Some(("foo".into(), 2, false)));
+        assert_eq!(m("\\DeclareMathOperator{\\tr}{tr}"), Some(("tr".into(), 0, false)));
+        assert_eq!(m("\\section{x}"), None);
     }
 
     #[test]

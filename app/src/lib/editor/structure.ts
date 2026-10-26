@@ -120,3 +120,31 @@ export function insertEnd(view: EditorView): boolean {
   });
   return true;
 }
+
+/** Enter at the end of an `\item` line → the next `\item` (same indent; `\item[…]` keeps its
+ * brackets, cursor inside). Enter on an empty `\item` removes it (leaves the list). */
+export function itemInsertion(state: EditorState): { from: number; to: number; insert: string; cursor: number } | null {
+  const sel = state.selection;
+  if (sel.ranges.length !== 1 || !sel.main.empty) return null;
+  const head = sel.main.head;
+  const line = state.doc.lineAt(head);
+  if (line.text.slice(head - line.from).trim()) return null;
+  const m = /^(\s*)\\item\b(\s*\[[^\]]*\])?\s*(.*)$/.exec(code(line.text.slice(0, head - line.from)));
+  if (!m) return null;
+  const [, indent, label, rest] = m;
+  if (!label && !rest.trim()) return { from: line.from, to: line.to, insert: indent, cursor: line.from + indent.length };
+  const next = `${indent}\\item${label ? "[] " : " "}`;
+  return { from: head, to: head, insert: `\n${next}`, cursor: head + 1 + next.length - (label ? 2 : 0) };
+}
+
+export function insertItem(view: EditorView): boolean {
+  const e = itemInsertion(view.state);
+  if (!e) return false;
+  view.dispatch({
+    changes: { from: e.from, to: e.to, insert: e.insert },
+    selection: EditorSelection.cursor(e.cursor),
+    scrollIntoView: true,
+    userEvent: "input",
+  });
+  return true;
+}

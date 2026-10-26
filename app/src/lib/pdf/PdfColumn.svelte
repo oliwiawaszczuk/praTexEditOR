@@ -20,7 +20,7 @@
   import { goTo } from "#lib/core/nav.svelte.ts";
   import { addImageToBoard } from "#lib/tabs/tablica/board.svelte.ts";
   import { tip } from "#lib/ui/tooltip.svelte.ts";
-  import type { Anchor, Fit, SyncRect, ViewerState } from "./viewer.ts";
+  import type { Anchor, Fit, SyncRect, Tone, ViewerState } from "./viewer.ts";
 
   let { build }: { build: Build } = $props();
 
@@ -86,6 +86,7 @@
     { id: "pdf.zoomOut", title: "Pomniejsz PDF", icon: "minus", keys: "mod+-", run: zoomOut },
     { id: "pdf.fitWidth", title: "Dopasuj szerokość", icon: "fitWidth", keys: "mod+0", run: () => (view ? void view.setFit("width") : false) },
     { id: "pdf.fitPage", title: "Cała strona", icon: "fitPage", run: () => (view ? void view.setFit("page") : false) },
+    { id: "pdf.tone", title: "Ciemny PDF (włącz / wyłącz)", icon: "moon", run: () => void wsSet("pdf.tone", tone === "off" ? "night" : "off") },
     { id: "pdf.export", title: "Eksportuj PDF", icon: "download", run: () => void exportPdf(false) },
     {
       id: "pdf.clip",
@@ -141,6 +142,19 @@
 
   // Follow the cursor: at most one query per 150 ms, the last position always wins.
   const follow = $derived(wsGet("pdf.follow", false));
+  const tone = $derived(wsGet<Tone>("pdf.tone", "off"));
+  const TONES: { id: Tone; label: string; icon: "moon" | "pdf" }[] = [
+    { id: "off", label: "Jasny papier", icon: "pdf" },
+    { id: "night", label: "Papier nocny (obrazy bez zmian)", icon: "moon" },
+    { id: "invert", label: "Odwróć kolory", icon: "moon" },
+  ];
+  function toneMenu(e: MouseEvent): void {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    openMenu(
+      { clientX: r.right - 240, clientY: r.bottom + 4 },
+      TONES.map((t) => ({ icon: tone === t.id ? ("check" as const) : t.icon, label: t.label, run: () => wsSet("pdf.tone", t.id) })),
+    );
+  }
   let followTimer: ReturnType<typeof setTimeout> | null = null;
   let pending: { path: string; line: number } | null = null;
   function onCursor(c: { path: string; line: number }): void {
@@ -231,6 +245,7 @@
       <button class="icon-btn" class:on={follow} disabled={!rev} use:tip={follow ? "PDF podąża za kursorem (klik: wyłącz)" : "PDF podąża za kursorem"} onclick={() => wsSet("pdf.follow", !follow)}><Icon name="link" size={15} /></button>
     </div>
     <div class="grp">
+      <button class="icon-btn" class:on={tone !== "off"} use:tip={{ label: "Ciemny PDF", keys: keysOf("pdf.tone") }} onmousedown={(e) => e.preventDefault()} onclick={toneMenu} oncontextmenu={(e) => { e.preventDefault(); runCommand("pdf.tone"); }}><Icon name="moon" size={15} /></button>
       <button class="icon-btn" class:on={clipping} disabled={!rev} use:tip={{ label: "Zrzut fragmentu → Tablica", keys: keysOf("pdf.clip") }} onclick={() => runCommand("pdf.clip")}><Icon name="camera" size={15} /></button>
       <button class="icon-btn" disabled={!rev} use:tip={"Eksportuj PDF"} onclick={exportMenu}><Icon name="download" size={15} /></button>
       <button class="icon-btn" use:tip={"Więcej"} onclick={moreMenu}><Icon name="more" size={15} /></button>
@@ -251,6 +266,7 @@
           onloaded={() => (loadError = "")}
           onpick={(p, mod) => void onPick(p, mod)}
           {clipping}
+          {tone}
           onclip={(r) => void onClip(r)}
           onlink={(u) => void call("open_url", { url: u }).catch((e) => toast(String(e instanceof Error ? e.message : e), { icon: "alert", error: true }))}
         />

@@ -10,6 +10,7 @@ import { call } from "#lib/core/tauri.ts";
 import { showCol } from "#lib/tabs/projekt/layout.svelte.ts";
 import { toast } from "#lib/ui/toast.svelte.ts";
 import { editor } from "./bridge.svelte.ts";
+import { activeIndex } from "#lib/index/index.svelte.ts";
 
 type Kind = "tex" | "image" | "bib";
 
@@ -178,4 +179,39 @@ export async function openMacroDefinition(name: string): Promise<boolean> {
     // fall through: no definition found
   }
   return false;
+}
+
+// ⌘+click on a key in `\cite{a,b}` / `\ref{x}` jumps to the `@entry` in the .bib or the
+// `\label{x}`, from the project index (no file reads).
+
+const REF_CMD = /\\([A-Za-z]*cite[A-Za-z]*|[A-Za-z]*ref|nameref|vref|cref|Cref)\*?(?:\[[^\]]*\])*\{([^{}]*)\}/g;
+
+/** The citation / reference key under `pos`, with what it points at. */
+export function refKeyAt(state: EditorState, pos: number): { key: string; kind: "bib" | "label" } | null {
+  const line = state.doc.lineAt(pos);
+  const cut = commentAt(line.text);
+  const code = cut < 0 ? line.text : line.text.slice(0, cut);
+  for (const m of code.matchAll(REF_CMD)) {
+    const start = line.from + (m.index ?? 0) + m[0].lastIndexOf("{") + 1;
+    let at = 0;
+    for (const part of m[2].split(",")) {
+      const lead = part.length - part.trimStart().length;
+      const key = part.trim();
+      const from = start + at + lead;
+      if (key && pos >= from && pos <= from + key.length) return { key, kind: /cite/i.test(m[1]) ? "bib" : "label" };
+      at += part.length + 1;
+    }
+  }
+  return null;
+}
+
+/** Open the entry / label. False = the index does not know it (click then means SyncTeX). */
+export async function openRefTarget(t: { key: string; kind: "bib" | "label" }): Promise<boolean> {
+  const snap = activeIndex()?.snap;
+  const hit = t.kind === "bib" ? snap?.bib.find((b) => b.key === t.key) : snap?.labels.find((l) => l.key === t.key);
+  const ed = editor();
+  if (!hit || !ed) return false;
+  showCol("mid");
+  await ed.reveal(hit.file, hit.line);
+  return true;
 }

@@ -10,6 +10,7 @@ describe("ProjectIndex crumbs", () => {
     outline: [o(1, "Wstęp", "a.tex", 1), o(1, "Metody", "a.tex", 10), o(2, "Dane", "b.tex", 1), o(2, "Analiza", "b.tex", 20), o(1, "Wyniki", "c.tex", 1)],
     labels: [],
     bib: [],
+    macros: [],
     words: 0,
     fileWords: {},
   };

@@ -3,7 +3,7 @@
   // with import(), never statically from the rest of the app.
   // `url` changes → fetch the bytes (pratex:// protocol, no IPC) → swap without flicker.
   import { onDestroy, onMount } from "svelte";
-  import { PdfViewer, type Anchor, type Fit, type SyncRect, type ViewerState } from "./viewer.ts";
+  import { PdfViewer, type Anchor, type Fit, type SyncRect, type Tone, type ViewerState } from "./viewer.ts";
 
   let {
     url,
@@ -17,6 +17,7 @@
     clipping = false,
     onclip,
     onlink,
+    tone = "off",
   }: {
     url: string | null;
     fit?: Fit;
@@ -35,6 +36,8 @@
     onclip?: (r: { page: number; x: number; y: number; w: number; h: number } | null) => void;
     /** A web / mail link in the PDF was clicked. (Internal links scroll by themselves.) */
     onlink?: (url: string) => void;
+    /** Dark preview (docs/02-plan.md §5.4); the exported PDF is never touched. */
+    tone?: Tone;
   } = $props();
 
   let scroller = $state<HTMLDivElement>();
@@ -66,6 +69,10 @@
     if (labelTimer) clearTimeout(labelTimer);
     viewer?.destroy();
     viewer = null;
+  });
+
+  $effect(() => {
+    viewer?.setTone(tone);
   });
 
   $effect(() => {
@@ -260,6 +267,12 @@
     overflow: hidden;
     --scale-round-x: 1px;
     --scale-round-y: 1px;
+  }
+  .scroller:global([data-tone="night"]) :global(.pdf-page) {
+    background: var(--bg-deep);
+  }
+  .scroller:global([data-tone="invert"]) :global(.pdf-page canvas) {
+    filter: invert(0.88) hue-rotate(180deg);
   }
   .scroller :global(.pdf-page canvas) {
     position: absolute;

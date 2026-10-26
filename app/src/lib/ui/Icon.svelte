@@ -85,6 +85,7 @@
     listBullet: "M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01",
     listNumber: "M10 6h10M10 12h10M10 18h10M4 5l1.5-1v5M3.5 14.5a1.5 1.5 0 0 1 3 .5c0 1-3 2-3 3.5h3",
     sigma: "M18 5H6l6 7-6 7h12",
+    omega: "M5 19h4a6 6 0 1 1 6 0h4",
     table: "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14",
     quote: "M5 17c2-1 3-3 3-6H5V6h5v5c0 4-2 6.5-5 7.5zM14 17c2-1 3-3 3-6h-3V6h5v5c0 4-2 6.5-5 7.5z",
     env: "M8 5H5v14h3M16 5h3v14h-3M9 12h6",

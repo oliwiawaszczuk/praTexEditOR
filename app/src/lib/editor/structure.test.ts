@@ -1,6 +1,6 @@
 import { EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
-import { code, endInsertion, envEnd, sectionEnd, sectionLevel } from "./structure.ts";
+import { code, endInsertion, itemInsertion, envEnd, sectionEnd, sectionLevel } from "./structure.ts";
 
 const doc = (s: string) => {
   const lines = s.split("\n");
@@ -41,5 +41,23 @@ describe("structure", () => {
     expect(run("\\begin{itemize}|")).toBe("\\begin{itemize}\n  \\item |\n\\end{itemize}");
     expect(run("\\begin{itemize}|\n\\end{itemize}")).toBeNull();
     expect(run("\\begin{itemize} x|")).toBeNull();
+  });
+});
+
+describe("itemInsertion", () => {
+  const at = (doc: string) => itemInsertion(EditorState.create({ doc, selection: { anchor: doc.length } }));
+  it("continues the list", () => {
+    expect(at("  \\item pierwszy")?.insert).toBe("\n  \\item ");
+  });
+  it("keeps the label brackets for description", () => {
+    const r = at("\\item[a] opis");
+    expect(r?.insert).toBe("\n\\item[] ");
+    expect(r?.cursor).toBe("\\item[a] opis".length + 1 + "\\item[".length);
+  });
+  it("removes an empty item", () => {
+    expect(at("  \\item ")).toMatchObject({ from: 0, insert: "  " });
+  });
+  it("ignores other lines", () => {
+    expect(at("zwykły tekst")).toBeNull();
   });
 });

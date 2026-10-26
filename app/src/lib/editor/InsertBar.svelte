@@ -8,6 +8,7 @@
   import { openMenu } from "#lib/ui/contextMenu.svelte.ts";
   import Icon from "#lib/ui/Icon.svelte";
   import { tip } from "#lib/ui/tooltip.svelte.ts";
+  import { toggleSymbols } from "#lib/symbols/palette.svelte.ts";
 
   const all = $derived(snippets());
   const bar = $derived(all.filter((s) => s.bar && !HEADINGS.includes(s.id) && !MATHS.includes(s.id)));
@@ -36,6 +37,9 @@
     {/if}
     {#if i === 2}
       <button class="ib drop" use:tip={"Matematyka"} onmousedown={keep} onclick={(e) => menu(e, MATHS)}><Icon name="sigma" size={15} /><Icon name="chevronDown" size={10} /></button>
+    {/if}
+    {#if i === 2}
+      <button class="ib ib-sym" use:tip={{ label: "Symbole", keys: keysOf("insert.symbols") }} onmousedown={keep} onclick={(e) => toggleSymbols(e.currentTarget as HTMLElement)}><Icon name="omega" size={15} /></button>
     {/if}
     {#each g as s (s.id)}
       <button class="ib" use:tip={{ label: s.title, keys: keysOf(commandId(s.id)) }} onmousedown={keep} onclick={() => runCommand(commandId(s.id))}>

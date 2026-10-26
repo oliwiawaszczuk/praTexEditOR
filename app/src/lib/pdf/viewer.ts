@@ -352,6 +352,17 @@ export class PdfViewer {
     return this.#fit;
   }
 
+  /** Switch the preview tone; "night" redraws the canvases (invert is CSS only). */
+  setTone(next: Tone): void {
+    if (next === tone) return;
+    const redraw = next === "night" || tone === "night";
+    tone = next;
+    this.scroller.dataset.tone = next;
+    if (!redraw) return;
+    for (const v of this.#views) if (v.canvas) v.drawn = 0;
+    this.#schedule();
+  }
+
   setFit(fit: Exclude<Fit, null>): void {
     this.#fit = fit;
     if (this.#doc) this.#rescale(this.#fitZoom(fit), null);
@@ -662,6 +673,14 @@ function shrink(c: HTMLCanvasElement): void {
   c.height = 0;
 }
 
+/** Preview tone (docs/02-plan.md §5.4): "night" recolours text and lines at render time
+ * (images stay), "invert" is a CSS filter on the canvases (see PdfView). Preview only. */
+export type Tone = "off" | "night" | "invert";
+let tone: Tone = "off";
+function css(name: string, fallback: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
 let paperColor = "";
 /** Page background from the tokens (`--pdf-page`). */
 function paper(): string {
@@ -686,7 +705,8 @@ async function drawPage(page: PDFPageProxy, scale: number): Promise<HTMLCanvasEl
       canvasContext: ctx,
       viewport,
       transform: out !== 1 ? [out, 0, 0, out, 0, 0] : undefined,
-      background: paper(),
+      background: tone === "night" ? css("--bg-deep", "#1a1a1a") : paper(),
+      pageColors: tone === "night" ? { background: css("--bg-deep", "#1a1a1a"), foreground: css("--text", "#e0e0e0") } : undefined,
     });
     await task.promise;
     return canvas;

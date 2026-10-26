@@ -26,12 +26,13 @@ import { runCommand } from "#lib/core/commands.svelte.ts";
 import { isMac } from "#lib/core/keys.ts";
 import { language, type LangId } from "./language.ts";
 import { colorSwatches } from "./colors.ts";
-import { fileLinkAt, fileLinks, macroAt, openFileLink, openMacroDefinition } from "./filelinks.ts";
+import { fileLinkAt, fileLinks, macroAt, openFileLink, openMacroDefinition, openRefTarget, refKeyAt } from "./filelinks.ts";
 import { completion } from "./complete.ts";
 import { imageHover } from "./hover.ts";
+import { formulaPreview } from "./formula.ts";
 import { flashField } from "./marks.ts";
 import { prefs, type Prefs } from "./prefs.ts";
-import { insertEnd, latexFolding } from "./structure.ts";
+import { insertEnd, insertItem, latexFolding } from "./structure.ts";
 import { editorHighlight, editorTheme, fontSizeTheme, svgIcon } from "./theme.ts";
 
 export const comp = {
@@ -95,6 +96,13 @@ const syncClick = [
       }
       e.preventDefault();
       // On a custom command: jump to its definition; no definition (e.g. \\section) = SyncTeX.
+      const ref = refKeyAt(view.state, pos);
+      if (ref) {
+        void openRefTarget(ref).then((found) => {
+          if (!found) runCommand("sync.toPdf");
+        });
+        return true;
+      }
       const macro = macroAt(view.state, pos);
       view.dispatch({ selection: { anchor: pos } });
       view.focus();
@@ -151,13 +159,13 @@ export function extensions(lang: LangId, hooks: Hooks): Extension[] {
     Prec.high(escapedDollar),
     syncClick,
     pasteImage,
-    lang === "latex" ? [completion(), imageHover, colorSwatches, fileLinks] : [],
+    lang === "latex" ? [completion(), imageHover, colorSwatches, fileLinks, formulaPreview] : [],
     rectangularSelection(),
     crosshairCursor(),
     highlightActiveLine(),
     highlightSelectionMatches(),
     search({ top: true, createPanel: hooks.searchPanel }),
-    Prec.high(keymap.of([{ key: "Enter", run: insertEnd }])),
+    Prec.high(keymap.of([{ key: "Enter", run: (v) => insertEnd(v) || insertItem(v) }])),
     keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, indentWithTab]),
     editorTheme,
     EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off", translate: "no" }),

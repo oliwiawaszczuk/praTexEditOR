@@ -74,6 +74,27 @@ function snippetOptions(word: string): Completion[] {
     }));
 }
 
+/** The project's own commands (`\\newcommand`…): `{}{}` shows the argument count. */
+function macroOptions(): Completion[] {
+  const macros = activeIndex()?.snap.macros ?? [];
+  return macros.map((m) => {
+    const slots = (m.optional ? "[]" : "") + "{}".repeat(m.args - (m.optional ? 1 : 0));
+    return {
+      label: `\\${m.name}`,
+      detail: slots || undefined,
+      type: "function",
+      boost: 3,
+      info: () => card([["Własna komenda", `${m.file.split(/[\\/]/).pop()}:${m.line}`], ["Definicja", m.body]]),
+      apply: (view: EditorView, _c: Completion, from: number, to: number) => {
+        let n = 0;
+        const tpl = `\\${m.name}` + (m.optional ? `[\${${++n}}]` : "") + "{}".repeat(m.args - (m.optional ? 1 : 0)).replace(/\{\}/g, () => `{\${${++n}}}`);
+        if (!n) view.dispatch({ changes: { from, to, insert: tpl }, selection: { anchor: from + tpl.length }, userEvent: "input.complete" });
+        else snippet(tpl + "${0}")(view, null, from, to);
+      },
+    } satisfies Completion;
+  });
+}
+
 function latexSource(ctx: CompletionContext): CompletionResult | null {
   const env = ctx.matchBefore(/\\begin\{[\w*]*$/);
   if (env) {
@@ -83,7 +104,7 @@ function latexSource(ctx: CompletionContext): CompletionResult | null {
   const cmd = ctx.matchBefore(/\\[A-Za-z@]*$/);
   if (!cmd || (cmd.from === cmd.to && !ctx.explicit)) return null;
   const word = cmd.text.slice(1);
-  return { from: cmd.from, options: [...commandOptions, ...snippetOptions(word)], validFor: /^\\[A-Za-z@]*$/ };
+  return { from: cmd.from, options: [...macroOptions(), ...commandOptions, ...snippetOptions(word)], validFor: /^\\[A-Za-z@]*$/ };
 }
 
 // ── Project index sources ────────────────────────────────────────────────────
