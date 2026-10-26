@@ -29,6 +29,11 @@ export interface Snippet {
   keys?: string;
   /** Shown on the "Wstaw" bar. */
   bar?: boolean;
+  /** Extra search words (English), besides the title and the prefix. */
+  keywords?: string;
+  /** Packages the snippet needs ("amsmath"; alternatives "hyperref|url"); when the document
+   * lacks one, inserting offers to add the \usepackage line. */
+  requires?: string;
 }
 
 const BR = "\\\\\\\\";
@@ -44,8 +49,8 @@ export const BUILTIN: Snippet[] = [
   { id: "textsc", title: "Kapitaliki", prefix: "sc", body: `\\textsc{\${1:${SEL}}}$0`, group: "tekst", icon: "bold" },
   { id: "footnote", title: "Przypis", prefix: "fn", body: `\\footnote{\${1:${SEL}}}$0`, group: "tekst", icon: "note" },
   { id: "quote", title: "Cytat (blok)", prefix: "quo", body: `\\begin{quote}\n\t\${1:${SEL}}\n\\end{quote}\n$0`, group: "tekst", icon: "quote" },
-  { id: "href", title: "Link", prefix: "href", body: `\\href{\${1:https://}}{\${2:${SEL}}}$0`, group: "tekst", icon: "link" },
-  { id: "url", title: "Adres URL", prefix: "url", body: "\\url{${1:https://}}$0", group: "tekst", icon: "link" },
+  { id: "href", title: "Link", prefix: "href", body: `\\href{\${1:https://}}{\${2:${SEL}}}$0`, group: "tekst", icon: "link", requires: "hyperref" },
+  { id: "url", title: "Adres URL", prefix: "url", body: "\\url{${1:https://}}$0", group: "tekst", icon: "link", requires: "hyperref|url" },
   { id: "verb", title: "Fragment kodu (verbatim)", prefix: "verb", body: `\\begin{verbatim}\n\${1:${SEL}}\n\\end{verbatim}\n$0`, group: "tekst", icon: "snippet" },
 
   // Struktura
@@ -58,6 +63,7 @@ export const BUILTIN: Snippet[] = [
   { id: "env", title: "Środowisko", prefix: "beg", body: `\\begin{\${1:nazwa}}\n\t\${2:${SEL}}\n\\end{\${1:nazwa}}\n$0`, group: "struktura", icon: "env" },
   { id: "input", title: "Dołącz plik (\\input)", prefix: "inp", body: "\\input{${1:rozdzialy/}}$0", group: "struktura", icon: "file" },
   { id: "include", title: "Dołącz rozdział (\\include)", prefix: "inc", body: "\\include{${1:rozdzialy/}}$0", group: "struktura", icon: "file" },
+  { id: "multicols", title: "Kolumny tekstu (multicols)", prefix: "cols", body: `\\begin{multicols}{\${1:2}}\n\t\${2:${SEL}}\n\\end{multicols}\n$0`, group: "struktura", icon: "layout", requires: "multicol" },
   { id: "newcommand", title: "Nowa komenda", prefix: "ncmd", body: "\\newcommand{\\\\${1:nazwa}}[${2:0}]{${3:treść}}$0", group: "struktura", icon: "func" },
   { id: "usepackage", title: "Pakiet", prefix: "pkg", body: "\\usepackage{${1:pakiet}}$0", group: "struktura", icon: "func" },
   {
@@ -79,19 +85,19 @@ export const BUILTIN: Snippet[] = [
   { id: "math", title: "Wzór w tekście $…$", prefix: "mk", body: `$\${1:${SEL}}$$0`, group: "matematyka", icon: "sigma", keys: "mod+e", bar: true },
   { id: "displaymath", title: "Wzór wyśrodkowany \\[…\\]", prefix: "dm", body: `\\[\n\t\${1:${SEL}}\n\\]\n$0`, group: "matematyka", icon: "sigma" },
   { id: "equation", title: "Równanie numerowane", prefix: "eq", body: `\\begin{equation}\n\t\${1:${SEL}}\n\t\\label{eq:\${2}}\n\\end{equation}\n$0`, group: "matematyka", icon: "sigma" },
-  { id: "equationstar", title: "Równanie bez numeru", prefix: "eq*", body: `\\begin{equation*}\n\t\${1:${SEL}}\n\\end{equation*}\n$0`, group: "matematyka", icon: "sigma" },
-  { id: "align", title: "Układ równań (align)", prefix: "ali", body: `\\begin{align}\n\t\${1:a} &= \${2:b} ${BR}\n\t\${3:c} &= \${4:d}\n\\end{align}\n$0`, group: "matematyka", icon: "sigma" },
-  { id: "alignstar", title: "Układ równań bez numerów", prefix: "ali*", body: `\\begin{align*}\n\t\${1:a} &= \${2:b} ${BR}\n\t\${3:c} &= \${4:d}\n\\end{align*}\n$0`, group: "matematyka", icon: "sigma" },
-  { id: "cases", title: "Przypadki (cases)", prefix: "cas", body: `\\begin{cases}\n\t\${1:x} & \\text{dla } \${2:x > 0} ${BR}\n\t\${3:0} & \\text{w p.p.}\n\\end{cases}$0`, group: "matematyka", icon: "sigma" },
-  { id: "pmatrix", title: "Macierz", prefix: "mat", body: `\\begin{pmatrix}\n\t\${1:a} & \${2:b} ${BR}\n\t\${3:c} & \${4:d}\n\\end{pmatrix}$0`, group: "matematyka", icon: "table" },
+  { id: "equationstar", title: "Równanie bez numeru", prefix: "eq*", body: `\\begin{equation*}\n\t\${1:${SEL}}\n\\end{equation*}\n$0`, group: "matematyka", icon: "sigma", requires: "amsmath" },
+  { id: "align", title: "Układ równań (align)", prefix: "ali", body: `\\begin{align}\n\t\${1:a} &= \${2:b} ${BR}\n\t\${3:c} &= \${4:d}\n\\end{align}\n$0`, group: "matematyka", icon: "sigma", requires: "amsmath" },
+  { id: "alignstar", title: "Układ równań bez numerów", prefix: "ali*", body: `\\begin{align*}\n\t\${1:a} &= \${2:b} ${BR}\n\t\${3:c} &= \${4:d}\n\\end{align*}\n$0`, group: "matematyka", icon: "sigma", requires: "amsmath" },
+  { id: "cases", title: "Przypadki (cases)", prefix: "cas", body: `\\begin{cases}\n\t\${1:x} & \\text{dla } \${2:x > 0} ${BR}\n\t\${3:0} & \\text{w p.p.}\n\\end{cases}$0`, group: "matematyka", icon: "sigma", requires: "amsmath" },
+  { id: "pmatrix", title: "Macierz", prefix: "mat", body: `\\begin{pmatrix}\n\t\${1:a} & \${2:b} ${BR}\n\t\${3:c} & \${4:d}\n\\end{pmatrix}$0`, group: "matematyka", icon: "table", requires: "amsmath" },
   { id: "frac", title: "Ułamek", prefix: "frac", body: "\\frac{${1:licznik}}{${2:mianownik}}$0", group: "matematyka", icon: "sigma" },
   { id: "sqrt", title: "Pierwiastek", prefix: "sq", body: "\\sqrt{${1:x}}$0", group: "matematyka", icon: "sigma" },
   { id: "sum", title: "Suma", prefix: "sum", body: "\\sum_{${1:i=1}}^{${2:n}} ${3}$0", group: "matematyka", icon: "sigma" },
   { id: "int", title: "Całka", prefix: "int", body: "\\int_{${1:a}}^{${2:b}} ${3:f(x)}\\,d${4:x}$0", group: "matematyka", icon: "sigma" },
   { id: "lim", title: "Granica", prefix: "lim", body: "\\lim_{${1:n} \\to ${2:\\infty}} ${3}$0", group: "matematyka", icon: "sigma" },
   { id: "leftright", title: "Nawiasy dopasowane", prefix: "lr", body: `\\left( \${1:${SEL}} \\right)$0`, group: "matematyka", icon: "sigma" },
-  { id: "text", title: "Tekst we wzorze", prefix: "txt", body: "\\text{${1}}$0", group: "matematyka", icon: "sigma" },
-  { id: "mathbb", title: "Zbiór (ℝ, ℕ…)", prefix: "bb", body: "\\mathbb{${1:R}}$0", group: "matematyka", icon: "sigma" },
+  { id: "text", title: "Tekst we wzorze", prefix: "txt", body: "\\text{${1}}$0", group: "matematyka", icon: "sigma", requires: "amsmath" },
+  { id: "mathbb", title: "Zbiór (ℝ, ℕ…)", prefix: "bb", body: "\\mathbb{${1:R}}$0", group: "matematyka", icon: "sigma", requires: "amssymb|amsfonts" },
 
   // Rysunki i tabele
   {
@@ -101,10 +107,11 @@ export const BUILTIN: Snippet[] = [
     body: "\\begin{figure}[${1:htbp}]\n\t\\centering\n\t\\includegraphics[width=${2:0.8}\\textwidth]{${3:img/plik}}\n\t\\caption{${4:Podpis}}\n\t\\label{fig:${5}}\n\\end{figure}\n$0",
     group: "rysunki",
     icon: "image",
+    requires: "graphicx",
     keys: "mod+shift+f",
     bar: true,
   },
-  { id: "includegraphics", title: "Obraz", prefix: "ig", body: "\\includegraphics[width=${1:0.8}\\textwidth]{${2:img/plik}}$0", group: "rysunki", icon: "image" },
+  { id: "includegraphics", title: "Obraz", prefix: "ig", body: "\\includegraphics[width=${1:0.8}\\textwidth]{${2:img/plik}}$0", group: "rysunki", icon: "image", requires: "graphicx" },
   {
     id: "table",
     title: "Tabela",
@@ -123,19 +130,22 @@ export const BUILTIN: Snippet[] = [
     body: `\\begin{tabular}{lcc}\n\t\\toprule\n\t\${1:} & \${2:} & \${3:} ${BR}\n\t\\midrule\n\t\${4:} & \${5:} & \${6:} ${BR}\n\t\${7:} & \${8:} & \${9:} ${BR}\n\t\\bottomrule\n\\end{tabular}\n$0`,
     group: "rysunki",
     icon: "table",
+    requires: "booktabs",
   },
 
   // Odwołania
   { id: "label", title: "Etykieta", prefix: "lbl", body: "\\label{${1:sec:}}$0", group: "odwołania", icon: "link" },
   { id: "ref", title: "Odwołanie", prefix: "ref", body: "\\ref{${1}}$0", group: "odwołania", icon: "link", bar: true },
-  { id: "eqref", title: "Odwołanie do wzoru", prefix: "eqref", body: "\\eqref{eq:${1}}$0", group: "odwołania", icon: "link" },
+  { id: "eqref", title: "Odwołanie do wzoru", prefix: "eqref", body: "\\eqref{eq:${1}}$0", group: "odwołania", icon: "link", requires: "amsmath" },
   { id: "pageref", title: "Numer strony", prefix: "pref", body: "\\pageref{${1}}$0", group: "odwołania", icon: "link" },
   { id: "cite", title: "Cytowanie", prefix: "cite", body: "\\cite{${1}}$0", group: "odwołania", icon: "quote", bar: true },
   { id: "bibliography", title: "Bibliografia (BibTeX)", prefix: "bib", body: "\\bibliographystyle{${1:plain}}\n\\bibliography{${2:bibliografia}}\n$0", group: "odwołania", icon: "bib" },
+  { id: "addbibresource", title: "Plik bibliografii (biblatex)", prefix: "abr", body: "\\addbibresource{${1:bibliografia.bib}}$0", group: "odwołania", icon: "bib", requires: "biblatex" },
+  { id: "printbibliography", title: "Wydruk bibliografii (biblatex)", prefix: "pbib", body: "\\printbibliography[title={${1:Literatura}}]\n$0", group: "odwołania", icon: "bib", requires: "biblatex" },
 
   // Beamer
   { id: "frame", title: "Slajd", prefix: "frm", body: "\\begin{frame}{${1:Tytuł}}\n\t$0\n\\end{frame}\n", group: "beamer", icon: "slides" },
-  { id: "columns", title: "Kolumny", prefix: "cols", body: "\\begin{columns}\n\t\\begin{column}{0.5\\textwidth}\n\t\t${1}\n\t\\end{column}\n\t\\begin{column}{0.5\\textwidth}\n\t\t${2}\n\t\\end{column}\n\\end{columns}\n$0", group: "beamer", icon: "layout" },
+  { id: "columns", title: "Kolumny (beamer)", prefix: "bcols", body: "\\begin{columns}\n\t\\begin{column}{0.5\\textwidth}\n\t\t${1}\n\t\\end{column}\n\t\\begin{column}{0.5\\textwidth}\n\t\t${2}\n\t\\end{column}\n\\end{columns}\n$0", group: "beamer", icon: "layout" },
   { id: "block", title: "Blok", prefix: "blk", body: "\\begin{block}{${1:Tytuł}}\n\t${2}\n\\end{block}\n$0", group: "beamer", icon: "slides" },
   { id: "pause", title: "Pauza", prefix: "pau", body: "\\pause\n$0", group: "beamer", icon: "pause" },
 ];
@@ -144,3 +154,71 @@ export const BUILTIN: Snippet[] = [
 export const HEADINGS = ["part", "chapter", "section", "subsection", "subsubsection", "paragraph"];
 /** Math entries of the "Σ" menu. */
 export const MATHS = ["math", "displaymath", "equation", "align", "frac", "sum", "int", "pmatrix"];
+
+/** English search words per built-in snippet ("table", "image"…): the titles are Polish. */
+const KEYWORDS: Record<string, string> = {
+  bold: "bold strong textbf",
+  italic: "italic emphasis textit",
+  underline: "underline",
+  emph: "emphasis emph",
+  texttt: "monospace code typewriter",
+  textsc: "small caps",
+  footnote: "footnote note",
+  quote: "quote blockquote citation",
+  href: "link hyperlink url href",
+  url: "url address link",
+  verb: "verbatim code listing",
+  part: "part heading",
+  chapter: "chapter heading",
+  section: "section heading title",
+  subsection: "subsection heading",
+  subsubsection: "subsubsection heading",
+  paragraph: "paragraph heading",
+  env: "environment begin end block",
+  input: "input include file",
+  include: "include chapter file",
+  newcommand: "newcommand macro command define",
+  usepackage: "package usepackage import",
+  itemize: "list bullet itemize unordered",
+  enumerate: "list numbered enumerate ordered",
+  description: "list description definition",
+  item: "item bullet point",
+  math: "math inline formula equation",
+  displaymath: "math display formula equation centered",
+  equation: "equation formula numbered",
+  equationstar: "equation formula unnumbered",
+  align: "align equations system multiline",
+  alignstar: "align equations unnumbered",
+  cases: "cases piecewise",
+  pmatrix: "matrix pmatrix array",
+  frac: "fraction frac",
+  sqrt: "square root sqrt",
+  sum: "sum sigma series",
+  int: "integral int",
+  lim: "limit lim",
+  leftright: "brackets parentheses left right delimiters",
+  text: "text in math",
+  mathbb: "blackboard bold set reals naturals",
+  figure: "figure image picture graphic float caption",
+  includegraphics: "image picture graphics photo include",
+  table: "table float caption tabular",
+  tabular: "table tabular grid",
+  table33: "table booktabs 3x3 grid",
+  label: "label anchor",
+  ref: "reference ref cross",
+  eqref: "equation reference eqref",
+  pageref: "page reference number",
+  cite: "citation cite bibliography reference source",
+  bibliography: "bibliography bibtex references",
+  frame: "frame slide beamer",
+  columns: "columns column beamer two side",
+  multicols: "columns multicol multicols two column text newspaper",
+  addbibresource: "biblatex bibliography bib resource file",
+  printbibliography: "biblatex bibliography print references list",
+  block: "block beamer",
+  pause: "pause beamer",
+  document: "document skeleton template article",
+};
+
+/** Words the search matches besides the title: the prefix and the English aliases. */
+export const keywordsOf = (s: Snippet): string => `${s.prefix} ${s.keywords ?? KEYWORDS[s.id] ?? ""}`.trim();

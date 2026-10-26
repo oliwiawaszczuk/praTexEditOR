@@ -3,6 +3,7 @@
   // chunk, loaded lazily) and the error drawer. The PDF comes from the build cache over
   // pratex://; a failed build keeps the last PDF on screen with a red pill.
   import { onDestroy } from "svelte";
+  import { slide } from "svelte/transition";
   import { keysOf, register, runCommand } from "#lib/core/commands.svelte.ts";
   import { formatKeys } from "#lib/core/keys.ts";
   import { currentProject, onLeaveProject, wsGet, wsSet } from "#lib/core/projects.svelte.ts";
@@ -54,6 +55,7 @@
     if (clipping && e.key === "Escape") clipping = false;
   }
 
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const drawer = $derived(wsGet("pdf.drawer", false));
   const rev = $derived(build.last?.rev ?? 0);
   const url = $derived(rev ? protoUrl(`pdf/${build.pid}`, { v: rev }) : null);
@@ -250,6 +252,7 @@
           onpick={(p, mod) => void onPick(p, mod)}
           {clipping}
           onclip={(r) => void onClip(r)}
+          onlink={(u) => void call("open_url", { url: u }).catch((e) => toast(String(e instanceof Error ? e.message : e), { icon: "alert", error: true }))}
         />
       {/await}
       {#if loadError}
@@ -279,11 +282,21 @@
   </div>
 
   {#if drawer}
-    <LogDrawer {build} onclose={() => wsSet("pdf.drawer", false)} />
+    <div class="drawer-slot" transition:slide={{ duration: reduceMotion ? 0 : 160 }}>
+      <LogDrawer {build} onclose={() => wsSet("pdf.drawer", false)} />
+    </div>
   {/if}
 </div>
 
 <style>
+  .drawer-slot {
+    flex-shrink: 0;
+    height: min(40%, 300px);
+    min-height: 120px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
   .col {
     flex: 1;
     min-width: 0;

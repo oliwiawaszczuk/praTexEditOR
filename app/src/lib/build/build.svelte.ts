@@ -89,6 +89,7 @@ export class Build {
   #echo = new Set<string>();
   #echoUntil = 0;
   #cursor = -1;
+  #autoOpened = false;
 
   constructor(project: () => Project) {
     this.#project = project;
@@ -155,7 +156,11 @@ export class Build {
     );
     try {
       const s = await call<{ running: boolean; last: BuildResult | null }>("build_state", { pid: this.pid });
-      if (s.last && !this.last) this.last = s.last;
+      // What the cache holds is the result of the *last session* (possibly a half-typed
+      // moment). When a build on open follows, its errors would only flash red: show the
+      // PDF now, the real verdict comes with that build.
+      const rebuild = this.auto && !!this.#project().main;
+      if (s.last && !this.last) this.last = rebuild && !s.running ? { ...s.last, diagnostics: [], ok: true } : s.last;
       if (s.running) this.phase = "running";
     } catch {
       // No shell (plain browser) or no project: nothing to show yet.
@@ -242,6 +247,16 @@ export class Build {
     if (r.cancelled) return;
     this.last = r;
     this.#cursor = -1;
+    // Errors open the drawer by themselves; a clean build closes it again, but only if
+    // we opened it (a drawer opened by hand to read warnings stays).
+    const errors = r.diagnostics.some((d) => d.severity === "error");
+    if (errors && !wsGet("pdf.drawer", false)) {
+      wsSet("pdf.drawer", true);
+      this.#autoOpened = true;
+    } else if (!errors && this.#autoOpened) {
+      wsSet("pdf.drawer", false);
+      this.#autoOpened = false;
+    }
     if (r.message) toast(r.message, { icon: "alert", error: true, ms: 6000 });
   }
 

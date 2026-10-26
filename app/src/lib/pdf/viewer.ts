@@ -35,6 +35,16 @@ export interface ViewerState {
   fit: Fit;
 }
 
+/** The parts of a pdf.js annotation we use. */
+interface Annotation {
+  subtype?: string;
+  rect?: number[];
+  dest?: string | unknown[] | null;
+  url?: string;
+  unsafeUrl?: string;
+}
+type RefProxy = Parameters<PDFDocumentProxy["getPageIndex"]>[0];
+
 interface Size {
   w: number;
   h: number;
@@ -47,6 +57,8 @@ interface PageView {
   drawn: number;
   text: HTMLDivElement | null;
   textLayer: TextLayer | null;
+  /** Clickable link rectangles (table of contents, \ref, \cite, URLs). */
+  links: HTMLDivElement | null;
 }
 
 /** A SyncTeX rectangle (Rust: synctex.rs): page index + PDF points, top-left origin. */
@@ -112,9 +124,11 @@ export class PdfViewer {
   #disposed = false;
   #onState: (s: ViewerState) => void;
   #onScroll = () => this.#schedule();
+  #onLink: ((url: string) => void) | undefined;
 
-  constructor(scroller: HTMLElement, opts: { fit?: Fit; zoom?: number; onState: (s: ViewerState) => void }) {
+  constructor(scroller: HTMLElement, opts: { fit?: Fit; zoom?: number; onState: (s: ViewerState) => void; onLink?: (url: string) => void }) {
     this.scroller = scroller;
+    this.#onLink = opts.onLink;
     this.#onState = opts.onState;
     this.#fit = opts.fit ?? "width";
     this.#zoom = opts.zoom ?? 1;
@@ -414,7 +428,7 @@ export class PdfViewer {
       div.className = "pdf-page";
       div.dataset.page = String(this.#views.length + 1);
       this.#content.appendChild(div);
-      this.#views.push({ div, canvas: null, drawn: 0, text: null, textLayer: null });
+      this.#views.push({ div, canvas: null, drawn: 0, text: null, textLayer: null, links: null });
     }
   }
 
@@ -457,6 +471,8 @@ export class PdfViewer {
   }
 
   #releaseText(v: PageView): void {
+    v.links?.remove();
+    v.links = null;
     v.textLayer?.cancel();
     v.textLayer = null;
     v.text?.remove();
@@ -529,6 +545,70 @@ export class PdfViewer {
     });
     v.textLayer = tl;
     tl.render().catch(() => {});
+    void this.#ensureLinks(i, v);
+  }
+
+  // ── Links ──────────────────────────────────────────────────────────────────
+
+  /** Link annotations of page `i` as clickable boxes (percent units: they follow zoom). */
+  async #ensureLinks(i: number, v: PageView): Promise<void> {
+    const page = this.#pageProxies[i];
+    const gen = this.#gen;
+    let notes: Annotation[];
+    try {
+      notes = (await page.getAnnotations({ intent: "display" })) as Annotation[];
+    } catch {
+      return;
+    }
+    // The page may have been released / rebuilt while the annotations were read.
+    if (gen !== this.#gen || this.#disposed || v.links || !v.text || this.#pageProxies[i] !== page) return;
+    const vp = page.getViewport({ scale: 1 });
+    const layer = document.createElement("div");
+    layer.className = "pdf-links";
+    for (const a of notes) {
+      if (a.subtype !== "Link" || !a.rect || (!a.dest && !a.url && !a.unsafeUrl)) continue;
+      // PDF user space → viewport (scale 1, top-left origin) through the page's transform.
+      const [ta, tb, tc, td, te, tf] = vp.transform;
+      const map = (x: number, y: number): [number, number] => [ta * x + tc * y + te, tb * x + td * y + tf];
+      const [x1, y1] = map(a.rect[0], a.rect[1]);
+      const [x2, y2] = map(a.rect[2], a.rect[3]);
+      const el = document.createElement("a");
+      el.className = "pdf-link";
+      el.style.left = `${(Math.min(x1, x2) / vp.width) * 100}%`;
+      el.style.top = `${(Math.min(y1, y2) / vp.height) * 100}%`;
+      el.style.width = `${(Math.abs(x2 - x1) / vp.width) * 100}%`;
+      el.style.height = `${(Math.abs(y2 - y1) / vp.height) * 100}%`;
+      const url = a.url ?? a.unsafeUrl;
+      if (url) el.title = url;
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (url) this.#onLink?.(url);
+        else void this.#goDest(a.dest);
+      });
+      layer.appendChild(el);
+    }
+    v.div.appendChild(layer);
+    v.links = layer;
+  }
+
+  /** Jump to a destination (named, or the explicit array of a link) like any PDF viewer. */
+  async #goDest(dest: string | unknown[] | null | undefined): Promise<void> {
+    const doc = this.#doc;
+    if (!doc || !dest) return;
+    try {
+      const d = typeof dest === "string" ? await doc.getDestination(dest) : dest;
+      if (!Array.isArray(d)) return;
+      const ref = d[0];
+      const page = typeof ref === "object" && ref !== null ? await doc.getPageIndex(ref as RefProxy) : Number(ref);
+      if (!Number.isInteger(page) || page < 0 || page >= this.#sizes.length || doc !== this.#doc) return;
+      // PDF y counts from the bottom of the page; keep a little context above the target.
+      const kind = (d[1] as { name?: string } | null)?.name;
+      const top = kind === "XYZ" ? d[3] : kind === "FitH" || kind === "FitBH" ? d[2] : kind === "FitR" ? d[5] : null;
+      const offset = typeof top === "number" ? Math.max(0, this.#sizes[page].h - top) : 0;
+      this.scroller.scrollTop = Math.max(0, this.#tops[page] + offset * this.#scale - PAD - 8);
+    } catch {
+      // a broken destination: nothing to do
+    }
   }
 
   #emit(): void {

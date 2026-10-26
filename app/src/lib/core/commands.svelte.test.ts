@@ -82,3 +82,28 @@ describe("commands", () => {
     expect(strokeOf(key({ key: "Shift", code: "ShiftLeft", shiftKey: true }), true)).toBeNull();
   });
 });
+
+describe("Polish letters on Alt", () => {
+  it("lets ⌥Z (ż) through into a text field even when a command is bound to alt+z", () => {
+    // no DOM in this test environment: a minimal stand-in for an <input>
+    class FakeEl {
+      tagName = "INPUT";
+      isContentEditable = false;
+      closest() {
+        return null;
+      }
+    }
+    const g = globalThis as unknown as Record<string, unknown>;
+    const saved = { HTMLElement: g.HTMLElement, Element: g.Element };
+    g.HTMLElement = FakeEl;
+    g.Element = FakeEl;
+    try {
+      register([{ id: "t.altz", title: "t", keys: "alt+z", run: () => true }]);
+      const typed = { ...key({ altKey: true, key: "ż", code: "KeyZ" }), target: new FakeEl() };
+      expect(dispatchKey(typed as unknown as KeyboardEvent, true)).toBe(false);
+    } finally {
+      g.HTMLElement = saved.HTMLElement;
+      g.Element = saved.Element;
+    }
+  });
+});

@@ -16,6 +16,7 @@
     onpick,
     clipping = false,
     onclip,
+    onlink,
   }: {
     url: string | null;
     fit?: Fit;
@@ -32,6 +33,8 @@
     /** Rubber-band mode: a drag on a page selects a rectangle (PDF points) → onclip. */
     clipping?: boolean;
     onclip?: (r: { page: number; x: number; y: number; w: number; h: number } | null) => void;
+    /** A web / mail link in the PDF was clicked. (Internal links scroll by themselves.) */
+    onlink?: (url: string) => void;
   } = $props();
 
   let scroller = $state<HTMLDivElement>();
@@ -54,6 +57,7 @@
         pageLabel = label;
         onstate?.(s);
       },
+      onLink: (url) => onlink?.(url),
     });
     void sync();
   });
@@ -160,6 +164,7 @@
     const d = down;
     down = null;
     if (!d || !viewer || !onpick || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
+    if ((e.target as Element | null)?.closest?.(".pdf-link")) return; // a link, not a SyncTeX click
     if ((window.getSelection()?.toString() ?? "").length > 0) return;
     const p = viewer.pointAt(e.clientX, e.clientY);
     if (p) onpick(p, e.metaKey || e.ctrlKey);
@@ -312,6 +317,25 @@
 
   /* pdf.js text layer (from pdf_viewer.css, trimmed): transparent text over the
      canvas for selecting and copying. */
+  .scroller :global(.pdf-links) {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+  }
+  .scroller :global(.pdf-link) {
+    position: absolute;
+    display: block;
+    pointer-events: auto;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  .scroller :global(.pdf-link:hover) {
+    background: var(--accent-a15);
+  }
+  .scroller.clipping :global(.pdf-links) {
+    display: none;
+  }
   .scroller :global(.textLayer) {
     position: absolute;
     text-align: initial;

@@ -690,6 +690,99 @@ pub async fn refs_apply(app: AppHandle, pid: String, edits: Vec<RefEdit>) -> Cmd
     .map_err(err)?
 }
 
+// ── Packages a snippet needs ────────────────────────────────────────────────
+
+/// What `\documentclass{…}` already loads, so that e.g. beamer documents are not told to add
+/// amsmath.
+fn class_provides(class: &str) -> &'static [&'static str] {
+    match class {
+        "beamer" => &["amsmath", "amssymb", "amsfonts", "amsthm", "graphicx", "hyperref", "xcolor", "url"],
+        _ => &[],
+    }
+}
+
+/// Every package the document loads: `\usepackage`/`\RequirePackage` in the main file and
+/// in the files it pulls in with `\input`/`\include` (the usual `preamble.tex`).
+fn loaded_packages(project: &Project) -> Result<(HashSet<String>, PathBuf), String> {
+    let main = project.main.clone().ok_or("Projekt nie ma pliku głównego")?;
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    let mut stack = vec![(main.clone(), 0u8)];
+    let mut pkgs: HashSet<String> = HashSet::new();
+    while let Some((path, depth)) = stack.pop() {
+        if !seen.insert(path.clone()) {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        for raw in text.lines() {
+            for (name, arg) in commands(strip_comment(raw)) {
+                match name {
+                    "usepackage" | "RequirePackage" => pkgs.extend(arg.split(',').map(|p| p.trim().to_string()).filter(|p| !p.is_empty())),
+                    "documentclass" => pkgs.extend(class_provides(arg.trim()).iter().map(|p| p.to_string())),
+                    "input" | "include" | "subfile" if depth < 4 => {
+                        let base = [main.parent(), path.parent()];
+                        for b in base.into_iter().flatten() {
+                            let cand = b.join(arg.trim());
+                            let tex = PathBuf::from(format!("{}.tex", cand.display()));
+                            if let Some(f) = [cand, tex].into_iter().find(|f| f.is_file()) {
+                                stack.push((f, depth + 1));
+                                break;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    Ok((pkgs, main))
+}
+
+/// For each requirement ("amsmath", or alternatives "hyperref|url") that the document does
+/// not meet yet: the package to add (the first alternative).
+#[tauri::command]
+pub async fn packages_missing(app: AppHandle, pid: String, requires: Vec<String>) -> CmdResult<Vec<String>> {
+    let project = app.state::<Projects>().get(&pid)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (have, _) = loaded_packages(&project)?;
+        Ok(requires
+            .iter()
+            .filter(|r| !r.split('|').any(|alt| have.contains(alt.trim())))
+            .filter_map(|r| r.split('|').next().map(|a| a.trim().to_string()))
+            .collect())
+    })
+    .await
+    .map_err(err)?
+}
+
+/// Adds `\usepackage{…}` lines to the main file: after its last `\usepackage` before
+/// `\begin{document}`, else right before it.
+#[tauri::command]
+pub async fn preamble_add(app: AppHandle, pid: String, packages: Vec<String>) -> CmdResult<()> {
+    let project = app.state::<Projects>().get(&pid)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let main = project.main.clone().ok_or("Projekt nie ma pliku głównego")?;
+        let main = crate::fs::guard::inside(&project, &main)?;
+        let clean: Vec<&String> = packages.iter().filter(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')).collect();
+        if clean.is_empty() {
+            return Ok(());
+        }
+        let raw = std::fs::read_to_string(&main).map_err(err)?;
+        let bom = raw.starts_with('\u{feff}');
+        let crlf = raw.contains("\r\n");
+        let norm = raw.trim_start_matches('\u{feff}').replace("\r\n", "\n");
+        let mut lines: Vec<String> = norm.split('\n').map(str::to_string).collect();
+        let begin = lines.iter().position(|l| strip_comment(l).contains("\\begin{document}")).ok_or("Nie widzę \\begin{document} w pliku głównym")?;
+        let at = lines[..begin].iter().rposition(|l| strip_comment(l).contains("\\usepackage")).map_or(begin, |i| i + 1);
+        for (i, p) in clean.iter().enumerate() {
+            lines.insert(at + i, format!("\\usepackage{{{p}}}"));
+        }
+        crate::fs::text::write(&main, &lines.join("\n"), crlf, bom).map_err(err)?;
+        Ok(())
+    })
+    .await
+    .map_err(err)?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -757,5 +850,29 @@ mod tests {
         let img_old = PathBuf::from("/p/img/x.png");
         let img_new = PathBuf::from("/p/img/y.png");
         assert_eq!(rewrite("img/x", &base, &img_old, &img_new).as_deref(), Some("img/y"));
+    }
+
+    #[test]
+    fn finds_packages_in_main_and_included_preamble() {
+        let d = tempfile::tempdir().unwrap();
+        let main = d.path().join("main.tex");
+        std::fs::write(&main, "\\documentclass{article}\n\\input{preamble}\n\\usepackage[hidelinks]{hyperref}\n\\begin{document}\n\\end{document}\n").unwrap();
+        std::fs::write(d.path().join("preamble.tex"), "\\usepackage{amsmath, graphicx}\n% \\usepackage{booktabs}\n").unwrap();
+        let project = Project { id: "x".into(), name: "x".into(), color: String::new(), roots: vec![d.path().to_path_buf()], main: Some(main), created_at: 0, opened_at: 0 };
+        let (have, _) = loaded_packages(&project).unwrap();
+        for p in ["amsmath", "graphicx", "hyperref"] {
+            assert!(have.contains(p), "{p}");
+        }
+        assert!(!have.contains("booktabs"));
+    }
+
+    #[test]
+    fn beamer_brings_its_own_math_packages() {
+        let d = tempfile::tempdir().unwrap();
+        let main = d.path().join("main.tex");
+        std::fs::write(&main, "\\documentclass{beamer}\n\\begin{document}\n\\end{document}\n").unwrap();
+        let project = Project { id: "x".into(), name: "x".into(), color: String::new(), roots: vec![d.path().to_path_buf()], main: Some(main), created_at: 0, opened_at: 0 };
+        let (have, _) = loaded_packages(&project).unwrap();
+        assert!(have.contains("amsmath") && have.contains("graphicx"));
     }
 }

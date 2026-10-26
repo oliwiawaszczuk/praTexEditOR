@@ -8,7 +8,7 @@
 import { EditorSelection, EditorState, Transaction, type Text } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { snippet } from "@codemirror/autocomplete";
-import { toggleComment, undo as undoCmd } from "@codemirror/commands";
+import { copyLineDown, toggleComment, undo as undoCmd } from "@codemirror/commands";
 import { openSearchPanel, selectNextOccurrence } from "@codemirror/search";
 import { toTemplate } from "#lib/snippets/vscode.ts";
 import { getSetting, setSetting } from "#lib/core/appSettings.svelte.ts";
@@ -81,6 +81,21 @@ export class Doc {
   }
 }
 
+/** ⌘D (as in PyCharm): the line under the cursor is copied below it, the cursor goes to the
+ * copy; with a selection the selected text is repeated right after it and stays selected. */
+function duplicate(view: EditorView): boolean {
+  if (view.state.selection.ranges.every((r) => r.empty)) return copyLineDown(view);
+  view.dispatch(
+    view.state.changeByRange((r) =>
+      r.empty
+        ? { range: r }
+        : { changes: { from: r.to, insert: view.state.sliceDoc(r.from, r.to) }, range: EditorSelection.range(r.to, r.to + (r.to - r.from)) },
+    ),
+    { userEvent: "input.copy", scrollIntoView: true },
+  );
+  return true;
+}
+
 export class Docs implements EditorBridge {
   docs = $state<Doc[]>([]);
   activePath = $state<string | null>(null);
@@ -106,10 +121,11 @@ export class Docs implements EditorBridge {
         { id: "tab.next", title: "Następna karta", keys: "ctrl+tab", group: "Karty", run: () => this.cycle(1) },
         { id: "tab.prev", title: "Poprzednia karta", keys: "ctrl+shift+tab", group: "Karty", run: () => this.cycle(-1) },
         { id: "editor.replace", title: "Zamień", icon: "replace", keys: "mod+alt+f", when: "editorFocus", group: "Edytor", run: () => (this.view ? void openReplace(this.view) : false) },
-        { id: "editor.toggleWrap", title: "Zawijanie wierszy", icon: "wrap", keys: "alt+z", when: "editorFocus", group: "Edytor", run: () => this.toggleWrap() },
+        { id: "editor.toggleWrap", title: "Zawijanie wierszy", icon: "wrap", keys: "mod+alt+z", when: "editorFocus", group: "Edytor", run: () => this.toggleWrap() },
         { id: "editor.find", title: "Szukaj w pliku", icon: "search", keys: "mod+f", when: "editorFocus", group: "Edytor", run: () => (this.view ? openSearchPanel(this.view) : false) },
         { id: "editor.comment", title: "Zakomentuj / odkomentuj", icon: "snippet", keys: "mod+/", when: "editorFocus", group: "Edytor", run: () => (this.view ? toggleComment(this.view) : false) },
-        { id: "editor.selectNext", title: "Zaznacz następne wystąpienie", icon: "selection", keys: "mod+d", when: "editorFocus", group: "Edytor", run: () => (this.view ? selectNextOccurrence(this.view) : false) },
+        { id: "editor.selectNext", title: "Zaznacz następne wystąpienie", icon: "selection", keys: "ctrl+g", when: "editorFocus", group: "Edytor", run: () => (this.view ? selectNextOccurrence(this.view) : false) },
+        { id: "editor.duplicate", title: "Duplikuj linię / zaznaczenie", icon: "duplicate", keys: "mod+d", when: "editorFocus", group: "Edytor", run: () => (this.view ? duplicate(this.view) : false) },
         { id: "editor.toggleInsertBar", title: "Pasek „Wstaw”", icon: "layout", keys: "mod+shift+i", group: "Edytor", run: () => void setSetting("editor.insertBar", !getSetting("editor.insertBar", true)) },
       ]),
       onLeaveProject(() => this.flush()),

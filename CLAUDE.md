@@ -16,7 +16,7 @@ UX: `docs/03-ux.md`. Tokeny: `docs/design/ui-tokens.md`.
 
 ```bash
 ./dev.sh          # Tauri dev + hot reload; dane w <app data>/com.praoliwia.praTexEditOR.dev
-./build.sh        # praTexEditOR.app w roocie projektu (dane jak w wydaniu)
+./build.sh        # build + praTexEditOR.app w roocie i instalacja w /Applications (--no-install: bez; --install-only: tylko kopia)
 ./scripts/fetch-tectonic.sh [triple]   # binarka Tectonic → app/src-tauri/binaries/ (externalBin)
 ./scripts/smoke-tectonic.sh <bin>      # kompilacja testowa z polskimi znakami
 

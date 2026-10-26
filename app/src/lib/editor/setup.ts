@@ -26,6 +26,7 @@ import { runCommand } from "#lib/core/commands.svelte.ts";
 import { isMac } from "#lib/core/keys.ts";
 import { language, type LangId } from "./language.ts";
 import { colorSwatches } from "./colors.ts";
+import { fileLinkAt, fileLinks, macroAt, openFileLink, openMacroDefinition } from "./filelinks.ts";
 import { completion } from "./complete.ts";
 import { imageHover } from "./hover.ts";
 import { flashField } from "./marks.ts";
@@ -85,9 +86,24 @@ const syncClick = [
       if (!mod || e.altKey || e.shiftKey || e.button !== 0) return false;
       const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
       if (pos === null) return false;
+      // On the path of \input{…} / \includegraphics{…}: open that file instead.
+      const link = fileLinkAt(view.state, pos);
+      if (link) {
+        e.preventDefault();
+        void openFileLink(link);
+        return true;
+      }
       e.preventDefault();
+      // On a custom command: jump to its definition; no definition (e.g. \\section) = SyncTeX.
+      const macro = macroAt(view.state, pos);
       view.dispatch({ selection: { anchor: pos } });
       view.focus();
+      if (macro) {
+        void openMacroDefinition(macro).then((found) => {
+          if (!found) runCommand("sync.toPdf");
+        });
+        return true;
+      }
       runCommand("sync.toPdf");
       return true;
     },
@@ -135,7 +151,7 @@ export function extensions(lang: LangId, hooks: Hooks): Extension[] {
     Prec.high(escapedDollar),
     syncClick,
     pasteImage,
-    lang === "latex" ? [completion(), imageHover, colorSwatches] : [],
+    lang === "latex" ? [completion(), imageHover, colorSwatches, fileLinks] : [],
     rectangularSelection(),
     crosshairCursor(),
     highlightActiveLine(),

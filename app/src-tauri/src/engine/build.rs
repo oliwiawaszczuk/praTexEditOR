@@ -8,6 +8,7 @@
 //! Layout of `<cache>/build/<pid>/`:
 //!   tectonic/   engine outdir (emptied before each run: PDF, SyncTeX, log only)
 //!   latexmk/    engine outdir (kept: aux files make the next run incremental)
+//!   live/       outdir of the typing-preview passes (seeded from latexmk/, never read back)
 //!   doc.pdf, doc.synctex.gz, doc.log   the last published result (the viewer reads these)
 
 use std::collections::HashMap;
@@ -216,12 +217,15 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
             if !have {
                 return fail(format!("Nie znaleziono {name} w instalacji TeX"));
             }
-            let work = build.join("latexmk");
+            let work = build.join(if opts.live { "live" } else { "latexmk" });
             if let Err(e) = std::fs::create_dir_all(&work) {
                 return fail(e.to_string());
             }
             if let Some(src) = main.parent() {
                 latexmk::mirror_dirs(src, &work, 4);
+            }
+            if opts.live {
+                latexmk::seed_live(&build.join("latexmk"), &work, 4);
             }
             if opts.live {
                 let tex = bin.parent().map(|d| d.join(match engine {
@@ -234,6 +238,7 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
                     None => (latexmk::command(&bin, flag, &main, &work), work),
                 }
             } else {
+                latexmk::purge_poisoned(&work, 4);
                 (latexmk::command(&bin, flag, &main, &work), work)
             }
         }
@@ -559,6 +564,18 @@ pub fn pdf_open_external(paths: State<'_, Paths>, pid: String) -> CmdResult<()> 
         return Err("Nie ma jeszcze PDF".into());
     }
     crate::fs::ops::open_default(&pdf).map_err(err)
+}
+
+/// A web / mail link clicked in the PDF opens in the default app. Only http(s) and mailto,
+/// and nothing a shell could read as more than one argument.
+#[tauri::command]
+pub fn open_url(url: String) -> CmdResult<()> {
+    let ok_scheme = ["http://", "https://", "mailto:"].iter().any(|s| url.to_ascii_lowercase().starts_with(s));
+    let clean = !url.chars().any(|c| c.is_whitespace() || c.is_control() || "&|<>^\"`$;".contains(c));
+    if !ok_scheme || !clean || url.len() > 2048 {
+        return Err("Ten adres nie może być otwarty z PDF".into());
+    }
+    crate::fs::ops::open_default(Path::new(&url)).map_err(err)
 }
 
 #[derive(Serialize)]

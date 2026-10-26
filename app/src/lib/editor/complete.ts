@@ -4,12 +4,13 @@
 // and `\includegraphics{` complete from the project index (E6): labels with their line,
 // bibliography cards (authors, year, title), files with an image thumbnail.
 
-import { autocompletion, hasNextSnippetField, snippet, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import { acceptCompletion, autocompletion, hasNextSnippetField, snippet, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { Prec, type Extension } from "@codemirror/state";
 import { keymap, type EditorView } from "@codemirror/view";
 import { currentProject } from "#lib/core/projects.svelte.ts";
 import { call, protoUrl } from "#lib/core/tauri.ts";
 import { activeIndex } from "#lib/index/index.svelte.ts";
+import { ensurePackages } from "#lib/snippets/requires.ts";
 import { snippets } from "#lib/snippets/store.svelte.ts";
 import { toTemplate, toText } from "#lib/snippets/vscode.ts";
 
@@ -68,6 +69,7 @@ function snippetOptions(word: string): Completion[] {
       },
       apply: (view: EditorView, _c: Completion, from: number, to: number) => {
         snippet(toTemplate(s.body))(view, null, from, to);
+        void ensurePackages(s.requires);
       },
     }));
 }
@@ -194,12 +196,14 @@ function expandPrefix(view: EditorView): boolean {
   const s = snippets().find((x) => x.prefix === word);
   if (!s) return false;
   snippet(toTemplate(s.body, { selection: "" }))(view, null, sel.head - word.length, sel.head);
+  void ensurePackages(s.requires);
   return true;
 }
 
 export function completion(): Extension {
   return [
     autocompletion({ override: [indexSource, latexSource], icons: true, activateOnTyping: true, maxRenderedOptions: 60 }),
-    Prec.high(keymap.of([{ key: "Tab", run: expandPrefix }])),
+    // Tab confirms the highlighted suggestion (like Enter); with no list open it expands a snippet prefix.
+    Prec.high(keymap.of([{ key: "Tab", run: (v) => acceptCompletion(v) || expandPrefix(v) }])),
   ];
 }

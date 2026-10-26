@@ -144,6 +144,62 @@ pub fn command_live(engine: &Path, main: &Path, outdir: &Path) -> Command {
     cmd
 }
 
+/// Files a pass reads back from the previous one (references, TOC, bibliography).
+const SEED_EXT: &[&str] = &["aux", "toc", "lof", "lot", "out", "bbl", "bcf", "xml", "nav", "snm", "vrb", "idx", "ind", "glo", "gls", "acn", "acr"];
+
+/// The live pass works in its own folder so that a half-typed `\section{Pod` (an unclosed
+/// brace swallows the end-of-file hook and writes garbage into `.toc`/`.aux`) can never
+/// poison the files latexmk keeps. Before each pass the reference files of the last full
+/// build are copied over (only when they differ), so `\ref`, `\cite` and the TOC still work.
+pub fn seed_live(from: &Path, to: &Path, depth: usize) {
+    if depth == 0 {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(from) else { return };
+    for e in rd.flatten() {
+        let Ok(ft) = e.file_type() else { continue };
+        let path = e.path();
+        let dest = to.join(e.file_name());
+        if ft.is_dir() {
+            let _ = std::fs::create_dir_all(&dest);
+            seed_live(&path, &dest, depth - 1);
+        } else if ft.is_file() && path.extension().and_then(|x| x.to_str()).is_some_and(|x| SEED_EXT.contains(&x)) {
+            let same = match (std::fs::metadata(&path), std::fs::metadata(&dest)) {
+                (Ok(a), Ok(b)) => a.len() == b.len() && b.modified().ok() >= a.modified().ok(),
+                _ => false,
+            };
+            if !same {
+                let _ = std::fs::copy(&path, &dest);
+            }
+        }
+    }
+}
+
+/// Deletes reference files that got LaTeX-internal macro names written into them (what an
+/// unclosed brace at the end of an `\\input` file leaves in `.toc`/`.aux`). Every later run
+/// reads such a file and fails the same way until it is regenerated — latexmk would not
+/// notice, because the file looks "up to date". Returns how many were removed.
+pub fn purge_poisoned(dir: &Path, depth: usize) -> usize {
+    if depth == 0 {
+        return 0;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
+    let mut n = 0;
+    for e in rd.flatten() {
+        let Ok(ft) = e.file_type() else { continue };
+        let path = e.path();
+        if ft.is_dir() {
+            n += purge_poisoned(&path, depth - 1);
+        } else if ft.is_file() && path.extension().and_then(|x| x.to_str()).is_some_and(|x| SEED_EXT.contains(&x)) {
+            let small = e.metadata().is_ok_and(|m| m.len() < 2_000_000);
+            if small && std::fs::read_to_string(&path).is_ok_and(|t| t.contains("@expl@@@filehook")) && std::fs::remove_file(&path).is_ok() {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
 /// pdfLaTeX writes `outdir/<sub>/x.aux` for `\include{sub/x}` and fails when `<sub>`
 /// does not exist there: mirror the source folders (shallow, no hidden/ignored ones).
 pub fn mirror_dirs(src: &Path, outdir: &Path, depth: usize) {
@@ -160,5 +216,39 @@ pub fn mirror_dirs(src: &Path, outdir: &Path, depth: usize) {
         let out = outdir.join(&name);
         let _ = std::fs::create_dir_all(&out);
         mirror_dirs(&e.path(), &out, depth - 1);
+    }
+}
+
+#[cfg(test)]
+mod seed_tests {
+    use super::*;
+
+    #[test]
+    fn seeds_only_reference_files_and_never_overwrites_newer_ones() {
+        let d = tempfile::tempdir().unwrap();
+        let (from, to) = (d.path().join("latexmk"), d.path().join("live"));
+        std::fs::create_dir_all(from.join("rozdzialy")).unwrap();
+        std::fs::create_dir_all(&to).unwrap();
+        std::fs::write(from.join("main.toc"), "toc").unwrap();
+        std::fs::write(from.join("main.pdf"), "pdf").unwrap();
+        std::fs::write(from.join("main.log"), "log").unwrap();
+        std::fs::write(from.join("rozdzialy/a.aux"), "aux").unwrap();
+        seed_live(&from, &to, 4);
+        assert_eq!(std::fs::read_to_string(to.join("main.toc")).unwrap(), "toc");
+        assert_eq!(std::fs::read_to_string(to.join("rozdzialy/a.aux")).unwrap(), "aux");
+        assert!(!to.join("main.pdf").exists() && !to.join("main.log").exists());
+        // A change of the source copy is picked up on the next pass.
+        std::fs::write(from.join("main.toc"), "toc-2").unwrap();
+        seed_live(&from, &to, 4);
+        assert_eq!(std::fs::read_to_string(to.join("main.toc")).unwrap(), "toc-2");
+    }
+
+    #[test]
+    fn purges_only_poisoned_reference_files() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("main.toc"), "\\contentsline {section}{\\numberline {2}\\@expl@@@filehook@file@pop@assign@@nnnn }{1}{section.2}").unwrap();
+        std::fs::write(d.path().join("main.aux"), "fine").unwrap();
+        assert_eq!(purge_poisoned(d.path(), 4), 1);
+        assert!(!d.path().join("main.toc").exists() && d.path().join("main.aux").exists());
     }
 }

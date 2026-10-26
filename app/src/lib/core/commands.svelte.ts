@@ -29,6 +29,8 @@ export interface Command {
   when?: When;
   /** Group in the palette / shortcut window. */
   group?: string;
+  /** Extra words the palette searches (besides the title). */
+  keywords?: string;
   /** false = not listed in the palette (internal helpers). */
   palette?: boolean;
   /** Return false when the command did not apply (the key then falls through). */
@@ -164,6 +166,12 @@ export function dispatchKey(e: KeyboardEvent, mac: boolean, enabled: (c: Command
   if (paused || e.isComposing) return false;
   const ctx = contextOf(e.target);
   const typing = editable(e.target);
+  // Alt (macOS ⌥, Windows AltGr) that types a character — ⌥Z → ż, ⌥S → ś, AltGr+L → ł — is
+  // text, never a shortcut: Polish letters must always get through.
+  if (e.altKey && !e.metaKey && (typing || ctx === "editorFocus") && e.key.length === 1) {
+    const base = /^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase() : /^Digit\d$/.test(e.code) ? e.code.slice(5) : null;
+    if (base !== null && e.key.toLowerCase() !== base && (!e.ctrlKey || e.getModifierState?.("AltGraph"))) return false;
+  }
   const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
   const candidates = [...registry.values()]
     .filter((c) => enabled(c) && keysOf(c.id))

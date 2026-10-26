@@ -7,6 +7,8 @@
   import { editor, setEditor } from "#lib/editor/bridge.svelte.ts";
   import PdfColumn from "#lib/pdf/PdfColumn.svelte";
   import { keysOf, register } from "#lib/core/commands.svelte.ts";
+  import { keywordsOf } from "#lib/snippets/builtin.ts";
+  import { ensurePackages } from "#lib/snippets/requires.ts";
   import { commandId, snippets } from "#lib/snippets/store.svelte.ts";
   import type { Docs } from "#lib/editor/docs.svelte.ts";
   import Icon, { type IconName } from "#lib/ui/Icon.svelte";
@@ -58,9 +60,12 @@
         keys: sn.keys,
         when: "editorFocus" as const,
         group: "Wstaw",
+        keywords: keywordsOf(sn),
         run: () => {
           showCol("mid");
-          return editor()?.insertSnippet(sn.body) ?? false;
+          const done = editor()?.insertSnippet(sn.body) ?? false;
+          if (done) void ensurePackages(sn.requires);
+          return done;
         },
       })),
     );

@@ -4,8 +4,9 @@
   import { currentProject, type Project } from "#lib/core/projects.svelte.ts";
   import { call } from "#lib/core/tauri.ts";
   import Icon, { type IconName } from "#lib/ui/Icon.svelte";
+  import { toast } from "#lib/ui/toast.svelte.ts";
   import { tip } from "#lib/ui/tooltip.svelte.ts";
-  import { relName, type Build, type Severity } from "./build.svelte.ts";
+  import { relName, type Build, type Diagnostic, type Severity } from "./build.svelte.ts";
 
   let { build, onclose }: { build: Build; onclose: () => void } = $props();
 
@@ -17,6 +18,24 @@
   ];
 
   let raw = $state<string | null>(null);
+
+  function open(d: Diagnostic): void {
+    if ((window.getSelection()?.toString() ?? "").length > 0) return; // selecting, not clicking
+    if (d.file) void build.reveal(d);
+  }
+
+  /** All visible entries as plain text (file:line, message, hint). */
+  async function copyAll(): Promise<void> {
+    const text = build.visible
+      .map((d) => `${d.file ? relName(d.file, project) : "—"}${d.line ? `:${d.line}` : ""}  ${d.message}${d.hint ? `\n    ${d.hint}` : ""}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Skopiowano błędy", { icon: "check", ms: 1500 });
+    } catch {
+      toast("Nie udało się skopiować", { icon: "alert", error: true });
+    }
+  }
 
   async function showRaw(): Promise<void> {
     if (raw !== null) {
@@ -52,6 +71,7 @@
       </button>
     {/each}
     <span class="spacer"></span>
+    <button class="icon-btn" disabled={!build.visible.length} use:tip={"Kopiuj błędy"} onclick={() => void copyAll()}><Icon name="copy" size={14} /></button>
     <button class="icon-btn" class:on={raw !== null} use:tip={"Surowy log"} onclick={() => void showRaw()}><Icon name="note" size={14} /></button>
     <button class="icon-btn" use:tip={"Zwiń"} onclick={onclose}><Icon name="chevronDown" size={15} /></button>
   </div>
@@ -69,14 +89,24 @@
     <ul class="list">
       {#each build.visible as d, i (i)}
         <li>
-          <button class="row {d.severity}" disabled={!d.file} onclick={() => void build.reveal(d)}>
+          <!-- A row, not a <button>: the text inside can be selected and copied. A click that
+               ends a selection does not jump to the line. -->
+          <div
+            class="row {d.severity}"
+            class:jump={!!d.file}
+            role="button"
+            tabindex={d.file ? 0 : -1}
+            aria-disabled={!d.file}
+            onclick={() => open(d)}
+            onkeydown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), open(d))}
+          >
             <span class="ic"><Icon name={d.severity === "error" ? "close" : d.severity === "warning" ? "alert" : "layout"} size={12} /></span>
             <span class="where">{d.file ? relName(d.file, project) : "—"}{d.line ? `:${d.line}` : ""}</span>
             <span class="msg">
               {d.message}
               {#if d.hint}<span class="hint">{d.hint}</span>{/if}
             </span>
-          </button>
+          </div>
         </li>
       {/each}
     </ul>
@@ -85,14 +115,12 @@
 
 <style>
   .drawer {
-    flex-shrink: 0;
-    height: min(40%, 300px);
-    min-height: 120px;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     background: var(--bg-panel);
     border-top: 1px solid var(--line-2);
-    animation: up 0.15s ease;
   }
   @keyframes up {
     from {
@@ -160,14 +188,23 @@
     text-align: left;
     font-size: var(--fs-sm);
     background: transparent;
-    border: none;
+    cursor: default;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .row.jump {
     cursor: pointer;
   }
-  .row:hover:not(:disabled) {
+  .row.jump:hover {
     background: var(--hover);
   }
-  .row:disabled {
-    cursor: default;
+  .row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .where {
+    -webkit-user-select: text;
+    user-select: text;
   }
   .ic {
     display: flex;

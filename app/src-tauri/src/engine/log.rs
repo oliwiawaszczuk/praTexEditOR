@@ -421,7 +421,10 @@ fn hint_for(msg: &str, context: &str) -> Option<String> {
     }
     if m.contains("LaTeX Error: Environment ") && m.contains(" undefined") {
         let env = m.split("Environment ").nth(1)?.split(' ').next()?;
-        return Some(format!("Nieznane środowisko „{env}” — literówka albo brak pakietu"));
+        return Some(match env_home(env) {
+            Some(home) => format!("Środowisko „{env}” jest {home}"),
+            None => format!("Nieznane środowisko „{env}” — literówka albo brak pakietu"),
+        });
     }
     if m.contains("LaTeX Error: \\begin{") && m.contains("ended by \\end{") {
         return Some("\\begin i \\end nie pasują do siebie — niedomknięte środowisko?".into());
@@ -460,6 +463,28 @@ fn hint_for(msg: &str, context: &str) -> Option<String> {
         return Some("Ta komenda musi być przed \\begin{document}".into());
     }
     None
+}
+
+/// Where a well-known environment comes from, for "Environment x undefined".
+fn env_home(env: &str) -> Option<&'static str> {
+    Some(match env {
+        "columns" | "column" | "frame" | "block" | "alertblock" | "exampleblock" => "z klasy beamer — użyj \\documentclass{beamer} (w article / report go nie ma)",
+        "multicols" | "multicols*" => "z pakietu multicol — dodaj \\usepackage{multicol}",
+        "align" | "align*" | "gather" | "gather*" | "multline" | "multline*" | "flalign" | "alignat" | "split" | "cases" | "pmatrix" | "bmatrix" | "vmatrix" | "Vmatrix" | "matrix" | "smallmatrix" => "z pakietu amsmath — dodaj \\usepackage{amsmath}",
+        "theorem" | "lemma" | "proof" | "definition" | "corollary" | "proposition" | "remark" | "example" => "z pakietu amsthm — dodaj \\usepackage{amsthm} i \\newtheorem",
+        "tikzpicture" | "scope" => "z pakietu tikz — dodaj \\usepackage{tikz}",
+        "lstlisting" => "z pakietu listings — dodaj \\usepackage{listings}",
+        "minted" => "z pakietu minted — dodaj \\usepackage{minted} (potrzebuje -shell-escape)",
+        "algorithm" | "algorithmic" => "z pakietu algorithm2e / algorithmicx — dodaj odpowiedni \\usepackage",
+        "subfigure" | "subtable" => "z pakietu subcaption — dodaj \\usepackage{subcaption}",
+        "wrapfigure" | "wraptable" => "z pakietu wrapfig — dodaj \\usepackage{wrapfig}",
+        "tabularx" => "z pakietu tabularx — dodaj \\usepackage{tabularx}",
+        "longtable" => "z pakietu longtable — dodaj \\usepackage{longtable}",
+        "landscape" => "z pakietu pdflscape albo lscape — dodaj \\usepackage{pdflscape}",
+        "appendices" => "z pakietu appendix — dodaj \\usepackage{appendix}",
+        "abstract" => "niedostępne w tej klasie dokumentu (np. w book / report bywa inaczej)",
+        _ => return None,
+    })
 }
 
 /// TeX breaks the `l.N` context right after the offending token.
@@ -636,5 +661,15 @@ mod tests {
         let a = "x".repeat(79);
         assert_eq!(unwrap(&format!("{a}\nyz\nnext")), vec![format!("{a}yz"), "next".into()]);
         assert_eq!(input_line("Citation `k' on page 1 undefined on input line 17."), ("Citation `k' on page 1 undefined.".into(), Some(17)));
+    }
+
+    #[test]
+    fn known_environments_say_where_they_come_from() {
+        let h = hint_for("LaTeX Error: Environment columns undefined.", "").unwrap();
+        assert!(h.contains("beamer"), "{h}");
+        let h = hint_for("LaTeX Error: Environment align undefined.", "").unwrap();
+        assert!(h.contains("amsmath"), "{h}");
+        let h = hint_for("LaTeX Error: Environment zzz undefined.", "").unwrap();
+        assert!(h.contains("literówka"), "{h}");
     }
 }

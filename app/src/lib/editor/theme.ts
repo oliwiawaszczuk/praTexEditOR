@@ -72,6 +72,9 @@ export const editorTheme = EditorView.theme(
     ".cm-card": { padding: "8px 10px", fontSize: "var(--fs-sm)", color: "var(--text-dim-1)", lineHeight: "1.5", maxWidth: "380px" },
     ".cm-card b": { color: "var(--text-dim-3)", fontWeight: "500" },
     ".cm-thumb": { display: "block", maxWidth: "240px", maxHeight: "180px", margin: "6px", borderRadius: "4px" },
+    // Paths of \input{…}: underlined with a hand while ⌘ is held (⌘+click opens the file).
+    ".cm-cmd .cm-file-link": { textDecoration: "underline", textUnderlineOffset: "3px", cursor: "pointer" },
+    ".cm-cmd .cm-file-link:hover": { color: "var(--accent)" },
     // Color swatch next to `{HTML}{F4F5EF}` (click = color picker).
     ".cm-color-swatch": { display: "inline-block", width: "11px", height: "11px", margin: "0 4px 0 1px", verticalAlign: "-1px", borderRadius: "3px", background: "var(--c)", border: "1px solid var(--line-3)", cursor: "pointer", transition: "transform var(--t-fast), border-color var(--t-fast)" },
     ".cm-color-swatch:hover": { transform: "scale(1.25)", borderColor: "var(--accent)" },

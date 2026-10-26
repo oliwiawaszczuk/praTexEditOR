@@ -11,6 +11,7 @@
   import { fileKind, KIND_ICON, kindColor } from "#lib/tree/kinds.ts";
   import Icon, { type IconName } from "#lib/ui/Icon.svelte";
   import { activeIndex } from "#lib/index/index.svelte.ts";
+  import { keywordsOf } from "#lib/snippets/builtin.ts";
   import { snippets } from "#lib/snippets/store.svelte.ts";
   import { toText } from "#lib/snippets/vscode.ts";
   import { fuzzy, rank, type Match } from "./fuzzy.ts";
@@ -66,13 +67,14 @@
   const items: Item[] = $derived.by(() => {
     if (mode === "cmd") {
       const cmds = allCommands().filter((c) => c.palette !== false);
-      return rank<Command>(cmds, q, (c) => c.title).map(({ item: c, match }) => ({
+      // Searches the title and the extra (English) words; only title hits are highlighted.
+      return rank<Command>(cmds, q, (c) => `${c.title} ${c.keywords ?? ""}`).map(({ item: c, match: m }) => ({
         key: c.id,
         icon: c.icon ?? "keyboard",
         title: c.title,
         detail: c.group ?? "",
         keys: keysOf(c.id),
-        match,
+        match: { score: m.score, hits: m.hits.filter((h) => h < c.title.length) },
         on: "title" as const,
         run: () => void c.run(),
       }));
@@ -82,7 +84,7 @@
       const out: { it: Item; score: number }[] = [];
       for (const sn of snippets()) {
         const t = fuzzy(q, sn.title);
-        const pf = fuzzy(q, sn.prefix);
+        const pf = fuzzy(q, keywordsOf(sn)); // prefix + English aliases ("table", "image")
         const best = t && (!pf || t.score >= pf.score) ? t : pf;
         if (!best) continue;
         const preview = toText(sn.body).replace(/\s+/g, " ").trim();
@@ -215,7 +217,7 @@
     }
     return out;
   }
-  const PH: Record<string, string> = { files: "nazwa pliku…  (> komendy)", cmd: "komenda…", snippets: "snippet — np. tabl, równanie…", sections: "sekcja…", labels: "etykieta…", bib: "pozycja bibliografii — autor, rok, tytuł…" };
+  const PH: Record<string, string> = { files: "nazwa pliku…  (> komendy)", cmd: "komenda…", snippets: "snippet — np. table, image, tabela, równanie…", sections: "sekcja…", labels: "etykieta…", bib: "pozycja bibliografii — autor, rok, tytuł…" };
 </script>
 
 {#if open}
