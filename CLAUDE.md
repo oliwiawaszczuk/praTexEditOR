@@ -10,7 +10,7 @@ Tauri v2 (sam Rust, bez sidecara) + SvelteKit 3 / Svelte 5. Wzorce i wygląd z p
 Wizja: `docs/00-vision.md`. Decyzje: `docs/01-qa.md`. Plan i etapy: `docs/02-plan.md`.
 UX: `docs/03-ux.md`. Tokeny: `docs/design/ui-tokens.md`.
 
-**Stan: E0–E7 gotowe (+ Notatki ⌘⇧M/⌘⇧N, własne szablony, Tablica z Konvą: `boards.rs`, zrzut fragmentu PDF → Tablica). Dalej: wg `docs/02-plan.md` (E8+).**
+**Stan: E0–E8 gotowe (+ Notatki ⌘⇧M/⌘⇧N, własne szablony, Tablica z Konvą: `boards.rs`, zrzut fragmentu PDF → Tablica). E9 Wersje (git) gotowe: zakładka ⌘4.**
 
 ## Uruchamianie
 
@@ -35,6 +35,9 @@ app/src-tauri/src/
                    tectonic (binarka obok exe), latexmk (wykrywanie TeX Live, komenda), status (rozgrzewka
                    z Condvar, selftest, cache Tectonic), build (kolejka łącząca, publikacja doc.pdf/.log/
                    .synctex.gz w cache, eksport), log (parser logu → Diagnostic + polskie podpowiedzi)
+  git/             libgit2 bez sieci (`git2`, bez `git` w systemie): repo = root projektu; mod (repos, status, log),
+                   diff (changes + file_diff: from/to = HEAD|index|work|root|<commit>), ops (init, discard plik/blok,
+                   restore z commita → stary plik do kosza). Celowo BEZ commit/stage w appce; repo szukane w górę drzewa
   synctex.rs       doc.synctex.gz → Index (hboxy + punkty słów), forward (plik, linia → prostokąty),
                    inverse (strona, x, y → plik, linia); cache per projekt wg mtime, warm() po kompilacji
   protocol.rs      pratex:// — pdf/<pid> (PDF z cache) i file/<pid>?p= (plik projektu przez guard), Range
@@ -65,7 +68,10 @@ app/src/lib/
   palette/         Palette (⌘P / ⌘⇧P, fuzzy.ts), ShortcutsModal (`?`)
   snippets/        builtin.ts (wbudowane, składnia VS Code), vscode.ts (→ szablon CodeMirror), store (snippets.json)
   images/          wklejanie zrzutu i upuszczanie obrazów/.tex na edytor (ImageDialog)
-  tabs/            Placeholder, projekt/ (Projekt {#key}, Workspace 3 kolumny, layout, Splitter),
+  git/             git.svelte.ts (GitStore per projekt: zmiany vs HEAD, historia, porównanie, diff; odświeżany z `fs-changed` i fokusu
+                   okna), rows.ts (hunki → wiersze unified/split), wordDiff.ts (podświetlenie słów)
+  tabs/            wersje/ (zakładka ⌘4: Wersje, ChangesPane, HistoryPane, DiffView — wirtualny diff 20 px/wiersz),
+                   Placeholder, projekt/ (Projekt {#key}, Workspace 3 kolumny, layout, Splitter),
                    ustawienia/ (Ogolne, Projekty, Diagnostics)
 ```
 

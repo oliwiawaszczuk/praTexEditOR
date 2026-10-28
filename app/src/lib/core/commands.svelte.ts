@@ -10,13 +10,14 @@
 import { untrack } from "svelte";
 import type { IconName } from "#lib/ui/Icon.svelte";
 
-export type When = "global" | "editorFocus" | "treeFocus" | "pdfFocus";
+export type When = "global" | "editorFocus" | "treeFocus" | "pdfFocus" | "gitFocus";
 
 export const WHEN_LABEL: Record<When, string> = {
   global: "wszędzie",
   editorFocus: "edytor",
   treeFocus: "drzewo",
   pdfFocus: "PDF",
+  gitFocus: "Wersje",
 };
 
 export interface Command {
@@ -142,6 +143,7 @@ export function contextOf(target: EventTarget | null): When {
   if (el?.closest(".cm-content")) return "editorFocus";
   if (el?.closest('[role="tree"]')) return "treeFocus";
   if (el?.closest(".pdfv")) return "pdfFocus";
+  if (el?.closest(".git-tab")) return "gitFocus";
   return "global";
 }
 

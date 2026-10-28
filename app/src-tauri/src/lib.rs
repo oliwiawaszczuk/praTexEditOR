@@ -2,6 +2,7 @@ mod boards;
 mod core;
 mod engine;
 mod fs;
+mod git;
 mod index;
 mod notes;
 mod projects;
@@ -124,6 +125,14 @@ pub fn run() {
             notes::notes_set,
             notes::notes_append,
             notes::notes_delete,
+            git::git_repos,
+            git::git_log,
+            git::diff::git_changes,
+            git::diff::git_file_diff,
+            git::ops::git_init,
+            git::ops::git_discard_hunk,
+            git::ops::git_discard,
+            git::ops::git_restore_from,
             index::index_get,
             index::index_drop,
             index::refs_find,

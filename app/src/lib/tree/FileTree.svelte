@@ -7,6 +7,7 @@
   import { currentProject, removeRoot, setRoot, type Project } from "#lib/core/projects.svelte.ts";
   import { pickDirectory } from "#lib/core/tauri.ts";
   import { activeBuild } from "#lib/build/build.svelte.ts";
+  import { activeGit } from "#lib/git/git.svelte.ts";
   import { dropFiles } from "#lib/images/images.svelte.ts";
   import { editor } from "#lib/editor/bridge.svelte.ts";
   import { openMenu, type MenuEntry } from "#lib/ui/contextMenu.svelte.ts";
@@ -56,6 +57,8 @@
   let filterInput = $state<HTMLInputElement>();
 
   const project = $derived(currentProject() as Project);
+  const gitMarks = $derived(activeGit()?.marks);
+  const gitDirs = $derived(activeGit()?.dirtyDirs);
   const rows = $derived(tree.rows);
   const first = $derived(Math.max(0, Math.floor(scrollTop / ROW) - OVERSCAN));
   const last = $derived(Math.min(rows.length, Math.ceil((scrollTop + height) / ROW) + OVERSCAN));
@@ -393,6 +396,12 @@
               <span class="name">{r.name}</span>
               {#if !r.dir && activeBuild()?.errorFiles.has(r.path)}<span class="failed" use:tip={"Błędy kompilacji w tym pliku"}></span>{/if}
               {#if !r.dir && editor()?.isDirty(r.path)}<span class="unsaved"></span>{/if}
+              {#if gitMarks?.get(r.path)}
+                {@const gk = gitMarks.get(r.path)}
+                <span class="gm {gk}" use:tip={gk === "added" ? "Nowy (niezatwierdzony)" : gk === "deleted" ? "Usunięty" : "Zmieniony (niezatwierdzony)"}>{gk === "added" ? "A" : gk === "deleted" ? "D" : "M"}</span>
+              {:else if r.dir && gitDirs?.has(r.path)}
+                <span class="gd" use:tip={"Zawiera niezatwierdzone zmiany"}></span>
+              {/if}
               {#if isMain(r.path)}
                 <span class="main" use:tip={"Plik główny"}><Icon name="star" size={11} /></span>
               {/if}
@@ -542,6 +551,30 @@
     flex-shrink: 0;
     border-radius: 50%;
     background: var(--danger);
+  }
+  .gm {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-right: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: "JetBrains Mono", monospace;
+    color: var(--accent);
+  }
+  .gm.added {
+    color: var(--ok);
+  }
+  .gm.deleted {
+    color: var(--danger);
+  }
+  .gd {
+    width: 6px;
+    height: 6px;
+    flex-shrink: 0;
+    margin-left: auto;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--accent-a70);
   }
   .unsaved {
     width: 6px;

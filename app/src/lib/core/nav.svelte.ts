@@ -2,10 +2,10 @@
 
 import { getSetting, setSetting } from "./appSettings.svelte.ts";
 
-export type TabKey = "projekt" | "tablica" | "notatki" | "ustawienia";
+export type TabKey = "projekt" | "tablica" | "notatki" | "wersje" | "ustawienia";
 export type SettingsSection = "ogolne" | "edytor" | "kompilacja" | "pdf" | "skroty" | "snippety" | "szablony" | "projekty" | "info";
 
-const TABS: TabKey[] = ["projekt", "tablica", "notatki", "ustawienia"];
+const TABS: TabKey[] = ["projekt", "tablica", "notatki", "wersje", "ustawienia"];
 
 let tab = $state<TabKey>("projekt");
 let section = $state<SettingsSection>("info");

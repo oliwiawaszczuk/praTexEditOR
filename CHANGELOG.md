@@ -1,6 +1,16 @@
 # Changelog
 
-## E8 Dopracowanie — w toku
+## E9 Wersje (Git) — 2026-10-28
+
+- Zakładka **Wersje** (⌘4): lista zmian względem ostatniego commita (+/− przy pliku, odrzucanie do kosza),
+  diff zielono-czerwony z podświetleniem słów (jedna kolumna lub przed | po, cały plik, F7 / ⇧F7),
+  odrzucanie pojedynczych fragmentów. Bez commitowania i stagingu w appce — commity robisz poza nią.
+  Repozytorium jest szukane w górę drzewa (może być w folderze nadrzędnym projektu).
+- **Historia** z gałęziami/HEAD przy commitach, historia jednego pliku, porównanie commita ze stanem
+  roboczym albo dwóch commitów (⌘-klik), przywracanie pliku z commita.
+- Znaczniki M/A/D w drzewie plików i licznik zmian na zakładce. Rust: `git2` bez funkcji sieciowych.
+
+## E8 Dopracowanie — 2026-10-28
 
 - **Ciemny PDF** (ikona księżyca w pasku PDF, komenda `pdf.tone`): „Papier nocny” (kolory tekstu
   i linii w renderze pdf.js, obrazy bez zmian) i „Odwróć” (filtr CSS). Tylko podgląd, eksport bez zmian.

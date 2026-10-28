@@ -39,7 +39,41 @@ const ENVS = [
   "columns", "column", "document", "thebibliography",
 ];
 
-const commandOptions: Completion[] = COMMANDS.map((c) => ({ label: `\\${c}`, type: "function" }));
+/** Commands that take braced arguments: accepting one writes `\\input{}` with the cursor
+ * inside (Tab moves on to the next `{}`). Everything not listed is inserted bare. */
+const ARGS: Record<string, number> = {
+  ...Object.fromEntries(
+    ("textbf textit underline emph texttt textsc footnote section subsection subsubsection chapter part paragraph caption label ref " +
+      "eqref pageref cite citep citet begin end sqrt mathbf mathrm mathcal mathbb mathit operatorname text hat bar vec tilde dot ddot " +
+      "overline underbrace overbrace includegraphics usepackage documentclass input include bibliography bibliographystyle " +
+      "printbibliography addbibresource hspace vspace url author title date frametitle")
+      .split(" ")
+      .map((n) => [n, 1]),
+  ),
+  frac: 2, dfrac: 2, newcommand: 2, renewcommand: 2, href: 2, multicolumn: 3, multirow: 3,
+};
+// \printbibliography takes no argument; its options go in [].
+delete ARGS.printbibliography;
+
+function withArgs(name: string, n: number): Completion {
+  return {
+    label: `\\${name}`,
+    type: "function",
+    apply: (view: EditorView, c: Completion, from: number, to: number) => {
+      // Editing an existing call (`\input|{…}`): only the name changes.
+      if (view.state.sliceDoc(to, to + 1) === "{") {
+        view.dispatch({ changes: { from, to, insert: c.label }, selection: { anchor: from + c.label.length }, userEvent: "input.complete" });
+        return;
+      }
+      snippet(c.label + Array.from({ length: n }, (_, i) => `{\${${i + 1}}}`).join("") + "${0}")(view, null, from, to);
+    },
+  };
+}
+
+const commandOptions: Completion[] = COMMANDS.map((c) => (ARGS[c] ? withArgs(c, ARGS[c]) : { label: `\\${c}`, type: "function" }));
+
+/** The suggestion for one command (exported for tests). */
+export const commandCompletion = (name: string): Completion | undefined => commandOptions.find((o) => o.label === `\\${name}`);
 
 function envOptions(): Completion[] {
   return ENVS.map((e) => ({

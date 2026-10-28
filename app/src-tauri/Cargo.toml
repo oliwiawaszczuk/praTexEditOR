@@ -28,6 +28,7 @@ trash = "5"
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 # Import only (Overleaf exports) → decompression, no zopfli encoder.
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+git2 = { version = "0.21.0", default-features = false }
 
 # Process-group kill of a cancelled build (latexmk → pdflatex → bibtex).
 [target.'cfg(unix)'.dependencies]

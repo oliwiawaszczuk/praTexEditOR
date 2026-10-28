@@ -91,6 +91,14 @@
     env: "M8 5H5v14h3M16 5h3v14h-3M9 12h6",
     func: "M15 4h-2a3 3 0 0 0-3 3v13M7 10h7",
     fitWidth: "M4 5v14M20 5v14M8 12h8M10 9.5L7.5 12l2.5 2.5M14 9.5l2.5 2.5-2.5 2.5",
+    branch: "M7 4v10M7 18a2 2 0 1 0 0 .01M17 6a2 2 0 1 0 0 .01M17 8c0 5-10 3-10 6",
+    commit: "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM3 12h6M15 12h6",
+    history: "M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4M12 8v4l3 2",
+    splitView: "M3 5h18v14H3zM12 5v14M6 9h3M15 15h3",
+    unifiedView: "M3 5h18v14H3zM6 9h12M6 13h12M6 17h7",
+    arrowDown: "M12 5v14M6 13l6 6 6-6",
+    arrowUp: "M12 19V5M6 11l6-6 6 6",
+    fullFile: "M5 3h14v18H5zM8 8h8M8 12h8M8 16h8",
     fitPage: "M7 3h10v18H7zM10 8h4M10 11h4M10 14h2",
   } as const;
   export type IconName = keyof typeof PATHS;

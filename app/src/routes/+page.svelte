@@ -3,7 +3,7 @@
   import "@fontsource/jetbrains-mono/600.css";
   import "#lib/ui/tokens.css";
 
-  import { onMount, type Component } from "svelte";
+  import { onMount, untrack, type Component } from "svelte";
   import { flushAppSettings, getSetting, loadAppSettings } from "#lib/core/appSettings.svelte.ts";
   import { watchEngine } from "#lib/core/engine.svelte.ts";
   import { activeTab, goTo, restoreNav, type TabKey } from "#lib/core/nav.svelte.ts";
@@ -46,6 +46,8 @@
   import Tablica from "#lib/tabs/tablica/Tablica.svelte";
   import { dropOnBoard } from "#lib/tabs/tablica/board.svelte.ts";
   import Notatki from "#lib/tabs/notatki/Notatki.svelte";
+  import Wersje from "#lib/tabs/wersje/Wersje.svelte";
+  import { activeGit, syncGit } from "#lib/git/git.svelte.ts";
   import Placeholder from "#lib/tabs/Placeholder.svelte";
   import Ustawienia from "#lib/tabs/ustawienia/Ustawienia.svelte";
 
@@ -62,6 +64,7 @@
     { key: "projekt", label: "Projekt", icon: "project", keys: "mod+1", component: Projekt },
     { key: "tablica", label: "Tablica", icon: "board", keys: "mod+2", component: Tablica },
     { key: "notatki", label: "Notatki", icon: "note", keys: "mod+3", component: Notatki },
+    { key: "wersje", label: "Wersje", icon: "branch", keys: "mod+4", component: Wersje },
     { key: "ustawienia", label: "Ustawienia", icon: "gear", keys: "mod+,", component: Ustawienia },
   ];
 
@@ -94,6 +97,13 @@
   }
 
   const project = $derived(currentProject());
+  // Version control follows the open project (status for tree marks + the Wersje tab).
+  const projectId = $derived(project?.id);
+  $effect(() => {
+    const id = projectId;
+    return untrack(() => syncGit(id));
+  });
+  const git = $derived(activeGit());
   const COLS: { col: Col; icon: IconName; label: string; keys: string }[] = [
     { col: "left", icon: "colLeft", label: "Pliki", keys: "mod+alt+1" },
     { col: "mid", icon: "colMid", label: "Edytor", keys: "mod+alt+2" },
@@ -118,6 +128,24 @@
     { id: "app.labels", title: "Etykiety", icon: "link", keys: "mod+t", group: "Okno", run: () => (project && tab === "projekt" ? openPalette("#") : false) },
     { id: "app.library", title: "Biblioteka (.bib)", icon: "quote", keys: "mod+shift+b", group: "Okno", run: () => (project && tab === "projekt" ? openLibrary("bib") : false) },
     { id: "app.gallery", title: "Galeria obrazów", icon: "image", keys: "mod+shift+g", group: "Okno", run: () => (project && tab === "projekt" ? openLibrary("images") : false) },
+    { id: "app.git.refresh", title: "Wersje: odśwież", icon: "refresh", group: "Wersje", run: () => (git ? void git.refresh() : false) },
+    { id: "app.git.changes", title: "Wersje: zmiany", icon: "compare", group: "Wersje", run: () => (project ? (goTo("wersje"), git?.setView("changes")) : false) },
+    { id: "app.git.history", title: "Wersje: historia projektu", icon: "history", group: "Wersje", keywords: "git commit", run: () => (project ? (goTo("wersje"), git?.setHistPath(null)) : false) },
+    {
+      id: "app.git.fileHistory",
+      title: "Wersje: historia bieżącego pliku",
+      icon: "history",
+      group: "Wersje",
+      run: () => {
+        const c = editor()?.cursor();
+        const root = git?.root;
+        if (!c || !git || !root || !c.path.startsWith(root + "/")) return false;
+        goTo("wersje");
+        git.setHistPath(c.path.slice(root.length + 1));
+      },
+    },
+    { id: "app.git.next", title: "Wersje: następna zmiana", icon: "arrowDown", keys: "f7", when: "gitFocus", group: "Wersje", run: () => (git?.nav ? git.nav(1) : false) },
+    { id: "app.git.prev", title: "Wersje: poprzednia zmiana", icon: "arrowUp", keys: "shift+f7", when: "gitFocus", group: "Wersje", run: () => (git?.nav ? git.nav(-1) : false) },
     { id: "app.notePad", title: "Notatnik pływający", icon: "note", keys: "mod+shift+m", group: "Notatki", run: () => void togglePad() },
     {
       id: "app.noteAppend",
@@ -229,6 +257,7 @@
         >
           <Icon name={t.icon} size={14} />
           <span>{t.label}</span>
+          {#if t.key === "wersje" && git?.dirty}<i class="badge">{git.dirty}</i>{/if}
         </button>
       {/each}
       <span class="spacer"></span>
@@ -370,6 +399,15 @@
   }
   .spacer {
     flex: 1;
+  }
+  .badge {
+    font-style: normal;
+    font-size: 0.62rem;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #1a1a1a;
+    letter-spacing: 0;
   }
   .tab {
     display: inline-flex;
