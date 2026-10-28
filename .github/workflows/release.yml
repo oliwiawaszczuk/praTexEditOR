@@ -29,6 +29,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The package bundle is downloaded on first use; keeping it makes later runs immune to
+      # network hiccups and faster.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/Tectonic
+            ~/Library/Caches/Tectonic
+            ~/AppData/Local/TectonicProject/Tectonic
+          key: tectonic-bundle-${{ runner.os }}-v1
+
       # ── Tectonic (externalBin) + smoke test on this OS ─────────────────────────
       - shell: bash
         run: ./scripts/fetch-tectonic.sh ${{ matrix.triple }}

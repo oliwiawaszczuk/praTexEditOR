@@ -15,7 +15,18 @@ Hello, świat! Zażółć gęślą jaźń.
 TEX
 "$BIN" --version
 mkdir -p "$DIR/out"
-(cd "$DIR" && "$BIN" -X compile main.tex --outdir out --keep-intermediates --keep-logs --synctex)
+# The first compile downloads Tectonic's package bundle; a CI runner's network hiccup
+# ("error decoding response body") must not fail the whole run, so retry a few times.
+ok=0
+for attempt in 1 2 3 4; do
+  if (cd "$DIR" && "$BIN" -X compile main.tex --outdir out --keep-intermediates --keep-logs --synctex); then
+    ok=1
+    break
+  fi
+  echo "⚠ próba $attempt/4 nieudana — ponawiam za $((attempt * 15)) s" >&2
+  sleep $((attempt * 15))
+done
+[ "$ok" = 1 ] || { echo "✗ kompilacja nie powiodła się (sieć lub pakiety)" >&2; exit 1; }
 for f in main.pdf main.synctex.gz main.log; do
   [ -s "$DIR/out/$f" ] || { echo "✗ brak $f" >&2; exit 1; }
 done
