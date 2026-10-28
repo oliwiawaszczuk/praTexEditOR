@@ -11,7 +11,7 @@ mod synctex;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tauri::menu::{Menu, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{Menu, SubmenuBuilder};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, WindowEvent};
 
 use crate::core::paths::Paths;
@@ -35,7 +35,7 @@ fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     #[cfg(target_os = "macos")]
     menu.append(
         &SubmenuBuilder::new(app, app.package_info().name.clone())
-            .item(&PredefinedMenuItem::about(app, None, None)?)
+            .item(&tauri::menu::PredefinedMenuItem::about(app, None, None)?)
             .separator()
             .services()
             .separator()
