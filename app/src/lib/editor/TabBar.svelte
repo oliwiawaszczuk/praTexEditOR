@@ -5,6 +5,7 @@
   import { keysOf } from "#lib/core/commands.svelte.ts";
   import { currentProject, type Project } from "#lib/core/projects.svelte.ts";
   import { call } from "#lib/core/tauri.ts";
+  import { revealInOs, revealLabel } from "#lib/core/os.ts";
   import { openMenu } from "#lib/ui/contextMenu.svelte.ts";
   import Icon from "#lib/ui/Icon.svelte";
   import { toast } from "#lib/ui/toast.svelte.ts";
@@ -81,7 +82,7 @@
       "sep",
       { icon: "folder", label: "Pokaż w drzewie", run: () => void activeTree()?.reveal(d.path) },
       { icon: "copy", label: "Kopiuj ścieżkę względną", run: () => void copyRel(d.path) },
-      { icon: "reveal", label: "Pokaż w Finderze", disabled: d.gone, run: () => void call("fs_reveal", { pid: project.id, path: d.path }) },
+      { icon: "reveal", label: revealLabel(), disabled: d.gone, run: () => revealInOs(project.id, d.path) },
     ]);
   }
 

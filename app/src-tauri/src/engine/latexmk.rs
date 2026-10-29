@@ -58,6 +58,7 @@ fn find(name: &str) -> Option<PathBuf> {
 
 fn first_line(bin: &Path, arg: &str) -> Option<String> {
     let mut cmd = Command::new(bin);
+    crate::core::hostenv::clean(&mut cmd);
     cmd.arg(arg);
     #[cfg(windows)]
     {

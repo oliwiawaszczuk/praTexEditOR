@@ -74,7 +74,7 @@
       </span>
       {#if git.repo.repoRoot}
         <span class="chip static" use:tip={`Repozytorium Git jest w folderze nadrzędnym: ${git.repo.repoRoot}. Pokazuję tylko zmiany z tego projektu.`}>
-          <Icon name="folderOpen" size={13} /><span>repozytorium wyżej: {git.repo.repoRoot.split("/").pop()}</span>
+          <Icon name="folderOpen" size={13} /><span>repozytorium wyżej: {git.repo.repoRoot.split(/[\\/]/).pop()}</span>
         </span>
       {/if}
       <span class="seg" role="tablist">

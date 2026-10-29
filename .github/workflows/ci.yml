@@ -71,7 +71,7 @@ jobs:
         with:
           path: |
             ~/.cache/Tectonic
-            ~/Library/Caches/Tectonic
+            ~/Library/Caches/TectonicProject.Tectonic
             ~/AppData/Local/TectonicProject/Tectonic
           key: tectonic-bundle-${{ runner.os }}-v1
       - shell: bash

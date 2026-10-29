@@ -1,3 +1,4 @@
+pub mod hostenv;
 pub mod jsonio;
 pub mod paths;
 pub mod settings;

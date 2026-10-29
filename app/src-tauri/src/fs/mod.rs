@@ -161,9 +161,11 @@ pub fn fs_duplicate(reg: State<'_, Projects>, pid: String, path: PathBuf) -> Cmd
 }
 
 #[tauri::command]
-pub fn fs_reveal(reg: State<'_, Projects>, pid: String, path: PathBuf) -> CmdResult<()> {
+pub async fn fs_reveal(reg: State<'_, Projects>, pid: String, path: PathBuf) -> CmdResult<()> {
     let p = project(&reg, &pid)?;
-    ops::reveal(&guard::inside(&p, &path)?).map_err(err)
+    let path = guard::inside(&p, &path)?;
+    // The file manager is asked over D-Bus / a child process: keep the UI thread free.
+    tauri::async_runtime::spawn_blocking(move || ops::reveal(&path)).await.map_err(err)?.map_err(err)
 }
 
 /// Open a file in the editor. `known` = the stamp the editor already has (watcher echo

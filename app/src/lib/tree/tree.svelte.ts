@@ -7,6 +7,7 @@ import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import { getSetting } from "#lib/core/appSettings.svelte.ts";
 import { baseName, parentDir, updateProject, wsGet, wsSet, type Project } from "#lib/core/projects.svelte.ts";
 import { call, on } from "#lib/core/tauri.ts";
+import { revealInOs } from "#lib/core/os.ts";
 import { editor } from "#lib/editor/bridge.svelte.ts";
 import { chooseOption, showError } from "#lib/ui/dialogs.svelte.ts";
 import { toast } from "#lib/ui/toast.svelte.ts";
@@ -386,7 +387,7 @@ export class TreeStore {
   }
 
   revealInOs(path: string): void {
-    void call("fs_reveal", { pid: this.project.id, path }).catch((e) => showError("Nie udało się pokazać w Finderze", e));
+    revealInOs(this.project.id, path);
   }
 
   /** Path as `\input`/`\includegraphics` want it: relative to the main file's folder. */

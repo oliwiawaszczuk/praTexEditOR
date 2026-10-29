@@ -23,7 +23,7 @@ jobs:
             bundles: nsis,msi
           - os: ubuntu-22.04
             triple: x86_64-unknown-linux-gnu
-            bundles: appimage,deb
+            bundles: appimage,deb,rpm
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -35,7 +35,7 @@ jobs:
         with:
           path: |
             ~/.cache/Tectonic
-            ~/Library/Caches/Tectonic
+            ~/Library/Caches/TectonicProject.Tectonic
             ~/AppData/Local/TectonicProject/Tectonic
           key: tectonic-bundle-${{ runner.os }}-v1
 
@@ -92,6 +92,7 @@ jobs:
             app/src-tauri/target/release/bundle/msi/*.msi
             app/src-tauri/target/release/bundle/appimage/*.AppImage
             app/src-tauri/target/release/bundle/deb/*.deb
+            app/src-tauri/target/release/bundle/rpm/*.rpm
 
       - name: Upload workflow artifacts (manual runs)
         if: "!startsWith(github.ref, 'refs/tags/')"
@@ -104,3 +105,4 @@ jobs:
             app/src-tauri/target/release/bundle/msi/*.msi
             app/src-tauri/target/release/bundle/appimage/*.AppImage
             app/src-tauri/target/release/bundle/deb/*.deb
+            app/src-tauri/target/release/bundle/rpm/*.rpm

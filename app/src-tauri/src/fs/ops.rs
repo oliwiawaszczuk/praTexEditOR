@@ -175,45 +175,118 @@ pub fn duplicate(path: &Path) -> io::Result<PathBuf> {
     Ok(dest)
 }
 
-/// Show the item selected in Finder / Explorer (Linux: open the containing folder).
+/// Show the item selected in Finder / Explorer / the file manager.
 pub fn reveal(path: &Path) -> io::Result<()> {
-    use std::process::Command;
-    #[cfg(target_os = "macos")]
-    let mut cmd = {
-        let mut c = Command::new("open");
-        c.arg("-R").arg(path);
-        c
-    };
-    #[cfg(target_os = "windows")]
-    let mut cmd = {
-        let mut c = Command::new("explorer");
-        c.arg(format!("/select,{}", path.display()));
-        c
-    };
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let mut cmd = {
-        let mut c = Command::new("xdg-open");
-        c.arg(if path.is_dir() { path } else { path.parent().unwrap_or(path) });
-        c
-    };
-    cmd.spawn().map(|_| ())
+    reveal_os(&path.canonicalize().unwrap_or_else(|_| path.to_path_buf()))
 }
 
-/// Open a file in its default app (PDF → Preview).
+#[cfg(target_os = "macos")]
+fn reveal_os(abs: &Path) -> io::Result<()> {
+    std::process::Command::new("open").arg("-R").arg(abs).spawn().map(|_| ())
+}
+
+#[cfg(target_os = "windows")]
+fn reveal_os(abs: &Path) -> io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    // explorer rejects the `\\?\` form and wants the path quoted after the comma.
+    let plain = abs.to_string_lossy().trim_start_matches(r"\\?\").to_string();
+    std::process::Command::new("explorer").raw_arg(format!("/select,\"{plain}\"")).spawn().map(|_| ())
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn reveal_os(abs: &Path) -> io::Result<()> {
+    reveal_linux(abs)
+}
+
+/// `file://` URI with the characters a URI needs escaped.
+#[cfg(unix)]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn file_uri(p: &Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut out = String::from("file://");
+    for &b in p.as_os_str().as_bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'/' | b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// Freedesktop `FileManager1.ShowItems` (Dolphin, Nautilus, Nemo… select the item); when no
+/// file manager answers on D-Bus, open the containing folder with `xdg-open`.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn reveal_linux(abs: &Path) -> io::Result<()> {
+    use crate::core::hostenv;
+    use std::process::Stdio;
+    let shown = hostenv::command("dbus-send")
+        .args([
+            "--session",
+            "--type=method_call",
+            "--dest=org.freedesktop.FileManager1",
+            "/org/freedesktop/FileManager1",
+            "org.freedesktop.FileManager1.ShowItems",
+        ])
+        .arg(format!("array:string:{}", file_uri(abs)))
+        .arg("string:")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    if shown {
+        return Ok(());
+    }
+    let dir = if abs.is_dir() { abs } else { abs.parent().unwrap_or(abs) };
+    let st = hostenv::command("xdg-open").arg(dir).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().map_err(|e| {
+        if e.kind() == io::ErrorKind::NotFound {
+            io::Error::other("Brak programu xdg-open — zainstaluj pakiet xdg-utils")
+        } else {
+            e
+        }
+    })?;
+    if st.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other("Menedżer plików nie otworzył folderu (xdg-open zwrócił błąd)"))
+    }
+}
+
+/// Open a file or http(s)/mailto link in its default app (PDF → Preview).
 pub fn open_default(path: &Path) -> io::Result<()> {
-    use std::process::Command;
-    #[cfg(target_os = "macos")]
-    let mut cmd = Command::new("open");
-    #[cfg(target_os = "windows")]
-    let mut cmd = {
-        use std::os::windows::process::CommandExt;
-        let mut c = Command::new("cmd");
-        c.args(["/C", "start", ""]).creation_flags(0x0800_0000);
-        c
-    };
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let mut cmd = Command::new("xdg-open");
-    cmd.arg(path).spawn().map(|_| ())
+    open_os(path)
+}
+
+#[cfg(target_os = "macos")]
+fn open_os(path: &Path) -> io::Result<()> {
+    std::process::Command::new("open").arg(path).spawn().map(|_| ())
+}
+
+#[cfg(target_os = "windows")]
+fn open_os(path: &Path) -> io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    // No `cmd /C start`: cmd would read `&` in a file name as a second command.
+    std::process::Command::new("rundll32").arg("url.dll,FileProtocolHandler").arg(path).creation_flags(0x0800_0000).spawn().map(|_| ())
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_os(path: &Path) -> io::Result<()> {
+    use std::process::Stdio;
+    crate::core::hostenv::command("xdg-open")
+        .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| {
+            if e.kind() == io::ErrorKind::NotFound {
+                io::Error::other("Brak programu xdg-open — zainstaluj pakiet xdg-utils")
+            } else {
+                e
+            }
+        })
 }
 
 #[cfg(test)]
@@ -223,6 +296,12 @@ mod tests {
     fn touch(p: &Path, s: &str) {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, s).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_uri_escapes_what_a_uri_needs() {
+        assert_eq!(file_uri(Path::new("/home/ola/Moja praca/rozdział.tex")), "file:///home/ola/Moja%20praca/rozdzia%C5%82.tex");
     }
 
     #[test]

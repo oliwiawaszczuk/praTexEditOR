@@ -7,6 +7,7 @@
   import { currentProject, removeRoot, setRoot, type Project } from "#lib/core/projects.svelte.ts";
   import { pickDirectory } from "#lib/core/tauri.ts";
   import { activeBuild } from "#lib/build/build.svelte.ts";
+  import { revealLabel } from "#lib/core/os.ts";
   import { activeGit } from "#lib/git/git.svelte.ts";
   import { dropFiles } from "#lib/images/images.svelte.ts";
   import { editor } from "#lib/editor/bridge.svelte.ts";
@@ -112,7 +113,7 @@
     if (r.root !== undefined) {
       if (r.missing) items.push({ icon: "folderOpen", label: "Wskaż folder ponownie", run: () => void relink(r.path) });
       items.push(
-        { icon: "reveal", label: "Pokaż w Finderze", disabled: r.missing, run: () => tree.revealInOs(r.path) },
+        { icon: "reveal", label: revealLabel(), disabled: r.missing, run: () => tree.revealInOs(r.path) },
         {
           icon: "unlink",
           label: "Odłącz od projektu",
@@ -127,7 +128,7 @@
         { icon: "edit", label: "Zmień nazwę", keys: keysOf("tree.rename"), disabled: many, run: () => tree.startRename(r.path) },
         { icon: "duplicate", label: "Duplikuj", disabled: many, run: () => void tree.duplicate(r.path) },
         { icon: "copy", label: "Kopiuj ścieżkę względną", disabled: many, run: () => void copyRel(r.path) },
-        { icon: "reveal", label: "Pokaż w Finderze", disabled: many, run: () => tree.revealInOs(r.path) },
+        { icon: "reveal", label: revealLabel(), disabled: many, run: () => tree.revealInOs(r.path) },
         "sep",
         { icon: "trash", label: many ? `Do kosza (${targets.length})` : "Do kosza", keys: keysOf("tree.trash"), danger: true, run: () => void tree.trash(targets) },
       );

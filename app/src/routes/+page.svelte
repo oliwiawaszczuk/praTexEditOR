@@ -138,10 +138,10 @@
       group: "Wersje",
       run: () => {
         const c = editor()?.cursor();
-        const root = git?.root;
-        if (!c || !git || !root || !c.path.startsWith(root + "/")) return false;
+        const rel = c && git ? git.relOf(c.path) : null;
+        if (!git || rel === null) return false;
         goTo("wersje");
-        git.setHistPath(c.path.slice(root.length + 1));
+        git.setHistPath(rel);
       },
     },
     { id: "app.git.next", title: "Wersje: następna zmiana", icon: "arrowDown", keys: "f7", when: "gitFocus", group: "Wersje", run: () => (git?.nav ? git.nav(1) : false) },

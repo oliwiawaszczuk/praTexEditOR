@@ -93,6 +93,7 @@ pub fn run_killable(
     mut cmd: Command,
     mut on_line: impl FnMut(&str),
 ) -> io::Result<ExitStatus> {
+    crate::core::hostenv::clean(&mut cmd);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

@@ -20,3 +20,5 @@ app/src-tauri/binaries/
 
 # Logs
 *.log
+# ...except the parser fixtures (engine::log tests read them)
+!tests/fixtures/**/*.log

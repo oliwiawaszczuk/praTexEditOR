@@ -119,7 +119,7 @@ export class GitStore {
   marks = $derived.by(() => {
     const m = new Map<string, Kind>();
     if (!this.root) return m;
-    for (const f of this.changes) m.set(`${this.root}/${f.path}`, f.status);
+    for (const f of this.changes) m.set(this.abs(f.path), f.status);
     return m;
   });
   /** Folders (absolute) that contain a change. */
@@ -129,7 +129,7 @@ export class GitStore {
     for (const f of this.changes) {
       let i = f.path.lastIndexOf("/");
       while (i > 0) {
-        s.add(`${this.root}/${f.path.slice(0, i)}`);
+        s.add(this.abs(f.path.slice(0, i)));
         i = f.path.lastIndexOf("/", i - 1);
       }
     }
@@ -139,8 +139,17 @@ export class GitStore {
   get dirty(): number {
     return this.changes.length;
   }
+  /** Absolute path of a project-relative one, with the separator the system uses. */
   abs(path: string): string {
-    return `${this.root}/${path}`;
+    const root = this.root ?? "";
+    const sep = root.includes("\\") && !root.includes("/") ? "\\" : "/";
+    return root + sep + (sep === "/" ? path : path.replaceAll("/", sep));
+  }
+  /** Project-relative path (with `/`) of an absolute one, or null when it is outside. */
+  relOf(abs: string): string | null {
+    const a = abs.replaceAll("\\", "/");
+    const r = (this.root ?? "").replaceAll("\\", "/");
+    return r && a.startsWith(r + "/") ? a.slice(r.length + 1) : null;
   }
 
   // ── lifecycle ─────────────────────────────────────────────────────────────
