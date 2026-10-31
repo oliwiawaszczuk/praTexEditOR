@@ -91,7 +91,7 @@ function replace(p: Project): void {
 async function setTitle(): Promise<void> {
   if (!inTauri()) return;
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
-  await getCurrentWindow().setTitle(current ? `${current.name} — praTexEditOR` : "praTexEditOR");
+  await getCurrentWindow().setTitle(current ? `${current.name} - praTexEditOR` : "praTexEditOR");
 }
 
 export async function openProject(id: string): Promise<void> {

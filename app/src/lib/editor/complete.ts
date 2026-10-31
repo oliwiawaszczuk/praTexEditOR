@@ -259,6 +259,7 @@ export function completion(): Extension {
   return [
     autocompletion({ override: [indexSource, latexSource], icons: true, activateOnTyping: true, maxRenderedOptions: 60 }),
     // Tab confirms the highlighted suggestion (like Enter); with no list open it expands a snippet prefix.
-    Prec.high(keymap.of([{ key: "Tab", run: (v) => acceptCompletion(v) || expandPrefix(v) }])),
+    // Prec.highest: an active snippet's own Tab (next field) would otherwise win while the list is open.
+    Prec.highest(keymap.of([{ key: "Tab", run: (v) => acceptCompletion(v) || expandPrefix(v) }])),
   ];
 }
