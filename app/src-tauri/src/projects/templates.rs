@@ -68,6 +68,19 @@ pub const TEMPLATES: &[Template] = &[
         ],
     },
     Template {
+        id: "studia",
+        name: "Studia (notatki)",
+        icon: "thesis",
+        files: &[
+            ("notatki.sty", tpl!("studia/notatki.sty")),
+            ("blank-przedmiot/main.tex", tpl!("studia/blank-przedmiot/main.tex")),
+            ("blank-przedmiot/content/", ""),
+            ("Przyklad/main.tex", tpl!("studia/Przyklad/main.tex")),
+            ("Przyklad/content/01_boksy.tex", tpl!("studia/Przyklad/content/01_boksy.tex")),
+            ("Przyklad/content/02_druga.tex", tpl!("studia/Przyklad/content/02_druga.tex")),
+        ],
+    },
+    Template {
         id: "prezentacja",
         name: "Prezentacja",
         icon: "slides",
@@ -463,7 +476,7 @@ mod tests {
 
     #[test]
     fn every_template_writes_a_detectable_main() {
-        for t in TEMPLATES {
+        for t in TEMPLATES.iter().filter(|t| t.id != "studia") {
             let d = tempfile::tempdir().unwrap();
             write(t, d.path()).unwrap();
             let main = std::fs::read_to_string(d.path().join("main.tex")).unwrap();

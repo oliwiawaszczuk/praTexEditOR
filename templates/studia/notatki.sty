@@ -1,0 +1,108 @@
+% Styl notatek ze studiów. Dla wszystkich przedmiotów naraz: zmiana tutaj dotyczy każdego PDF-a.
+% Silnik: LuaLaTeX (działa też z XeLaTeX / Tectonic).
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{notatki}[2026/11/04 notatki ze studiów]
+
+\RequirePackage{iftex}
+\ifPDFTeX
+  \RequirePackage[T1]{fontenc}
+  \RequirePackage[utf8]{inputenc}
+\else
+  \RequirePackage{fontspec}
+  % Cały tekst: JetBrains Mono (musi być zainstalowany w systemie).
+  \setmainfont{JetBrains Mono}
+  \setsansfont{JetBrains Mono}
+  \setmonofont{JetBrains Mono}
+\fi
+\RequirePackage[polish]{babel}
+\RequirePackage[a4paper,margin=2.2cm,headheight=16pt]{geometry}
+\RequirePackage{amsmath,amssymb,mathtools}
+\RequirePackage{graphicx,xcolor,booktabs,fancyhdr}
+\RequirePackage[most]{tcolorbox}
+\RequirePackage[hidelinks,bookmarksnumbered]{hyperref}
+
+% ── Kolory ───────────────────────────────────────────────────────────────────
+\definecolor{akcent}{HTML}{C98A00}
+\definecolor{tusz}{HTML}{2B2B2B}
+\definecolor{niebieski}{HTML}{3B6FB6}
+\definecolor{zielony}{HTML}{3F8F5B}
+\definecolor{pomarancz}{HTML}{D9822B}
+\definecolor{czerwien}{HTML}{C0453A}
+\definecolor{fiolet}{HTML}{7A55B3}
+
+% ── Układ ────────────────────────────────────────────────────────────────────
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+% Tylko pakiety, które ma też BasicTeX (bez enumitem / titlesec).
+\def\@listi{\leftmargin\leftmargini \topsep 4\p@ \parsep 0\p@ \itemsep 2\p@}
+\let\@listI\@listi
+\def\@listii{\leftmargin\leftmarginii \labelwidth\leftmarginii \advance\labelwidth-\labelsep \topsep 2\p@ \parsep 0\p@ \itemsep 2\p@}
+\setcounter{tocdepth}{2}
+\setcounter{secnumdepth}{3}
+
+\renewcommand{\section}{\@startsection{section}{1}{\z@}{-3.2ex plus -1ex minus -.2ex}{1.4ex plus .2ex}{\normalfont\Large\bfseries\color{akcent}}}
+\renewcommand{\subsection}{\@startsection{subsection}{2}{\z@}{-2.6ex plus -1ex minus -.2ex}{1ex plus .2ex}{\normalfont\large\bfseries\color{tusz}}}
+\renewcommand{\subsubsection}{\@startsection{subsubsection}{3}{\z@}{-2.2ex plus -1ex minus -.2ex}{0.8ex plus .2ex}{\normalfont\normalsize\bfseries\color{niebieski}}}
+
+% Nazwa przedmiotu = nazwa folderu (appka ustawia ją przed wczytaniem stylu); \przedmiot{…} ją zmienia.
+\providecommand{\przedmiotduze}{}
+\providecommand{\przedmiotmale}{}
+\gdef\@autorn{}
+\newcommand{\przedmiot}[1]{\gdef\przedmiotmale{#1}\gdef\przedmiotduze{\MakeUppercase{#1}}}
+\newcommand{\autor}[1]{\gdef\@autorn{#1}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{akcent}\leaders\hrule height \headrulewidth\hfill}}
+\fancyhead[L]{\small\color{gray}\przedmiotmale}
+\fancyhead[R]{\small\color{gray}\nouppercase{\rightmark}}
+\fancyfoot[C]{\small\thepage}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\small\thepage}\renewcommand{\headrulewidth}{0pt}}
+
+% Strona tytułowa + spis treści. Pomijana w PDF-ie pojedynczej notatki.
+\newcommand{\okladka}{%
+  \begingroup\centering
+  {\fontspec{Arial Black}\Huge\color{akcent}\przedmiotduze\par}\vspace{4pt}
+  {\large\@autorn\par}\vspace{0.6em}
+  {\color{akcent}\rule{\linewidth}{0.8pt}}\par
+  \endgroup
+  \tableofcontents
+  \clearpage}
+
+% Jedna notatka = jedna sekcja. \notatka[data]{Tytuł}
+\newcommand{\notatka}[2][]{%
+  \section{#2}%
+  \if\relax\detokenize{#1}\relax\else{\small\color{gray}#1\par}\fi}
+
+% ── Boksy ────────────────────────────────────────────────────────────────────
+\tcbset{
+  notatkibox/.style={
+    enhanced, breakable, boxrule=0pt, arc=2pt,
+    left=8pt, right=8pt, top=5pt, bottom=5pt, before skip=8pt, after skip=8pt,
+    fonttitle=\bfseries\small,
+    attach boxed title to top left={yshift=-2mm},
+    boxed title style={empty,left=0pt,top=0pt,bottom=0pt},
+  },
+  kolorboks/.style={
+    notatkibox, colback=#1!6, colframe=#1,
+    borderline west={2.5pt}{0pt}{#1}, coltitle=#1!80!black,
+  },
+}
+
+% \begin{fakty}[Tytuł] — ciekawostki, kontekst, liczby.
+\newtcolorbox{fakty}[1][Fakty]{kolorboks=niebieski, title={#1}}
+\newtcolorbox{uwaga}[1][Uwaga]{kolorboks=pomarancz, title={#1}}
+\newtcolorbox{wazne}[1][Ważne]{kolorboks=czerwien, title={#1}}
+\newtcolorbox{pulapka}[1][Pułapka]{kolorboks=czerwien, title={#1}}
+\newtcolorbox{podsumowanie}[1][Podsumowanie]{kolorboks=zielony, title={#1}}
+
+% Definicje i twierdzenia: wspólna numeracja w obrębie sekcji. \begin{definicja}[Nazwa]
+\newtcolorbox[auto counter,number within=section]{definicja}[1][]{%
+  kolorboks=fiolet, title={Definicja~\thetcbcounter\ifstrempty{#1}{}{: #1}}}
+\newtcolorbox[use counter from=definicja]{twierdzenie}[1][]{%
+  kolorboks=fiolet, title={Twierdzenie~\thetcbcounter\ifstrempty{#1}{}{: #1}}}
+
+% ── Drobiazgi ────────────────────────────────────────────────────────────────
+\newcommand{\pojecie}[1]{\textbf{\color{akcent}#1}}
+\providecommand{\degree}{^{\circ}}

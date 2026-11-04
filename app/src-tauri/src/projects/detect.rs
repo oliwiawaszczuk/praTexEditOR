@@ -21,6 +21,10 @@ pub struct MainCandidate {
 }
 
 pub fn find_mains(root: &Path) -> Vec<MainCandidate> {
+    // Template "Studia": every subject has its own main.tex, the build picks one itself.
+    if root.join(crate::studia::STYLE_FILE).is_file() {
+        return Vec::new();
+    }
     let mut out = Vec::new();
     walk(root, root, 0, &mut out);
     out.sort_by_key(|c| (rank(&c.path), c.rel.matches('/').count(), c.rel.clone()));
@@ -106,6 +110,15 @@ mod tests {
         assert!(inspect("\\chapter{Wstęp}\nTekst").is_none());
         assert!(inspect("% \\documentclass{article}\n\\begin{document}").is_none());
         assert!(inspect("\\documentclass{article}\n% \\begin{document}").is_none());
+    }
+
+    #[test]
+    fn studia_folder_has_no_single_main() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("Bio")).unwrap();
+        std::fs::write(d.path().join("notatki.sty"), "").unwrap();
+        std::fs::write(d.path().join("Bio/main.tex"), "\\documentclass{article}\\begin{document}x\\end{document}").unwrap();
+        assert!(find_mains(d.path()).is_empty());
     }
 
     #[test]

@@ -179,6 +179,7 @@
   });
 
   async function exportPdf(ask: boolean): Promise<void> {
+    if (build.studia) return void build.exportPdf(build.scope);
     try {
       const to = await call<string | null>("pdf_export", { pid, ask });
       if (to) toast(`Zapisano ${to.split(/[\\/]/).pop()}`, { icon: "check" });
@@ -189,6 +190,13 @@
 
   function exportMenu(e: MouseEvent): void {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    if (build.studia) {
+      openMenu({ clientX: r.left, clientY: r.bottom + 4 }, [
+        { icon: "download", label: "PDF przedmiotu (do folderu przedmiotu)", run: () => void build.exportPdf("subject") },
+        { icon: "download", label: "PDF tej notatki (do folderu przedmiotu)", run: () => void build.exportPdf("note") },
+      ]);
+      return;
+    }
     openMenu({ clientX: r.left, clientY: r.bottom + 4 }, [
       { icon: "download", label: "Obok pliku głównego", run: () => void exportPdf(false) },
       { icon: "disk", label: "Zapisz jako…", run: () => void exportPdf(true) },
@@ -232,6 +240,12 @@
 <div class="col">
   <div class="bar">
     <StatusPill {build} {drawer} ontoggle={() => wsSet("pdf.drawer", !drawer)} />
+    {#if build.studia}
+      <div class="seg" role="group" aria-label="Zakres podglądu">
+        <button class:on={build.scope === "subject"} use:tip={{ label: "Podgląd: cały przedmiot", keys: keysOf("studia.scope") }} onclick={() => build.setScope("subject")}>Przedmiot</button>
+        <button class:on={build.scope === "note"} use:tip={{ label: "Podgląd: tylko ta notatka (szybciej)", keys: keysOf("studia.scope") }} onclick={() => build.setScope("note")}>Notatka</button>
+      </div>
+    {/if}
     <span class="spacer"></span>
     <div class="grp">
       <button class="icon-btn" disabled={!rev} use:tip={{ label: "Pomniejsz", keys: keysOf("pdf.zoomOut") }} onclick={zoomOut}><Icon name="minus" size={14} /></button>
@@ -288,6 +302,8 @@
           <span class="msg bad">{build.last.message}</span>
         {:else if build.counts.error}
           <span class="msg bad">PDF nie powstał — zobacz błędy</span>
+        {:else if build.studia && !build.target}
+          <span class="msg">Otwórz notatkę z folderu przedmiotu, żeby zobaczyć PDF</span>
         {/if}
         <button class="hint" onclick={() => void build.compileNow()}>
           <Icon name="play" size={12} />
@@ -341,6 +357,30 @@
   .grp + .grp {
     padding-left: 6px;
     border-left: 1px solid var(--line-1);
+  }
+  .seg {
+    display: flex;
+    padding: 2px;
+    gap: 2px;
+    background: var(--bg-panel);
+    border: 1px solid var(--line-1);
+    border-radius: var(--radius-sm);
+  }
+  .seg button {
+    padding: 2px 8px;
+    font-size: var(--fs-sm);
+    color: var(--text-dim-2);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .seg button:hover {
+    color: var(--text);
+  }
+  .seg button.on {
+    color: var(--accent);
+    background: var(--hover);
   }
   .zoom {
     min-width: 50px;

@@ -8,6 +8,7 @@ use std::time::Instant;
 use serde::Serialize;
 
 use super::process::{run_streaming, Procs};
+use crate::studia::Plan;
 
 /// Tauri puts external binaries next to the main executable, with the target-triple
 /// suffix stripped — in `tauri dev` too (copied into target/debug).
@@ -86,16 +87,30 @@ pub fn compile(
 /// A project build: only the PDF, its SyncTeX data and the log come out (in `outdir`,
 /// the app cache) — Tectonic keeps aux/bbl/toc in memory and reruns by itself.
 /// `continue-on-errors`: like Overleaf, a document with errors still gives a PDF.
-pub fn build_command(bin: &Path, main: &Path, outdir: &Path) -> Command {
+///
+/// A Studia `plan` runs the generated wrapper from the subject folder, with the project
+/// root on the search path (for `notatki.sty`).
+pub fn build_command(bin: &Path, main: &Path, outdir: &Path, plan: Option<&Plan>) -> Command {
     let mut cmd = Command::new(bin);
-    cmd.arg("-X")
-        .arg("compile")
-        .arg(main.file_name().unwrap_or_default())
-        .arg("--outdir")
-        .arg(outdir)
-        .args(["--synctex", "--keep-logs", "-Z", "continue-on-errors"]);
-    if let Some(dir) = main.parent().filter(|d| !d.as_os_str().is_empty()) {
-        cmd.current_dir(dir);
+    cmd.arg("-X").arg("compile");
+    match plan {
+        Some(p) => {
+            cmd.arg(main).current_dir(&p.subject);
+        }
+        None => {
+            cmd.arg(main.file_name().unwrap_or_default());
+            if let Some(dir) = main.parent().filter(|d| !d.as_os_str().is_empty()) {
+                cmd.current_dir(dir);
+            }
+        }
+    }
+    cmd.arg("--outdir").arg(outdir).args(["--synctex", "--keep-logs", "-Z", "continue-on-errors"]);
+    if let Some(p) = plan {
+        // Tectonic resolves relative names against the main file's folder (the cache) and
+        // the search path, not the working dir: the subject must be on it too.
+        for dir in [&p.root, &p.subject] {
+            cmd.arg("-Z").arg(format!("search-path={}", dir.display()));
+        }
     }
     cmd
 }
@@ -151,7 +166,7 @@ mod tests {
         std::fs::create_dir_all(&out).unwrap();
         let main = src.join("main.tex");
         std::fs::write(&main, "\\documentclass{article}\\begin{document}\\section{A}\\label{a}Zażółć \\ref{a} \\nieznana\\end{document}\n").unwrap();
-        let st = run_streaming(&Procs::default(), build_command(&bin, &main, &out), |_| {}).unwrap();
+        let st = run_streaming(&Procs::default(), build_command(&bin, &main, &out, None), |_| {}).unwrap();
         assert!(st.success());
         let mut names: Vec<String> = std::fs::read_dir(&out).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
         names.sort();

@@ -1,6 +1,6 @@
 <script lang="ts">
   // The project view: [files] | [editor] | [PDF] (docs/03-ux.md §3).
-  import { onDestroy } from "svelte";
+  import { onDestroy, untrack } from "svelte";
   import { currentProject, type Project } from "#lib/core/projects.svelte.ts";
   import { ProjectIndex, setActiveIndex } from "#lib/index/index.svelte.ts";
   import { Build, setActiveBuild } from "#lib/build/build.svelte.ts";
@@ -34,6 +34,12 @@
   const build = new Build(() => currentProject() as Project);
   setActiveBuild(build);
   void build.start();
+
+  // Studia: the open file decides which subject / note the PDF column builds.
+  $effect(() => {
+    const path = docs?.activePath ?? null;
+    untrack(() => build.setFocus(path));
+  });
 
   // Project index: outline, labels, bibliography (palette @ # &, completion, breadcrumbs).
   const index = new ProjectIndex(() => currentProject() as Project);

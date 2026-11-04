@@ -7,6 +7,7 @@ mod index;
 mod notes;
 mod projects;
 mod protocol;
+mod studia;
 mod synctex;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -139,6 +140,9 @@ pub fn run() {
             index::refs_apply,
             index::packages_missing,
             index::preamble_add,
+            studia::studia_info,
+            studia::studia_new_note,
+            studia::studia_new_subject,
             synctex::synctex_forward,
             synctex::synctex_inverse,
             projects::projects_list,

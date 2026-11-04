@@ -159,6 +159,17 @@ app/src/lib/
 - Nowy log do testów parsera → `tests/fixtures/logs/` (ścieżki zanonimizowane, długość linii zachowana);
   SyncTeX → `tests/fixtures/synctex/` (`$PROJECT` zamiast ścieżki projektu `projekt/`).
 
+## Studia (szablon notatek, KONWENCJE)
+
+- Projekt „Studia” = katalog z `notatki.sty` + foldery przedmiotów (`main.tex` + `content/01_x.tex …`). Wykrycie:
+  `studia_info` (Rust `studia.rs`); domyślny silnik tam to LuaLaTeX. Szablon: `templates/studia/`.
+- Build przedmiotu/notatki nie kompiluje `main.tex` wprost: `studia::plan` pisze wrapper do `<cache>/build/<pid>/studia/`
+  (linia `%% NOTATKI` → `\input` plików z `content/` w kolejności naturalnej; notatka solo bez `\okladka`),
+  silnik leci z cwd = folder przedmiotu, korzeń na TEXINPUTS / `-Z search-path`. W folderach użytkowniczki tylko eksport PDF.
+- Cel = `BuildOpts.target` (`Target {subject, note?}`); front liczy go z aktywnego pliku + przełącznika Przedmiot/Notatka
+  (`studia/target.ts`, `Build.setFocus`). Eksport (`export: true`) → `<Przedmiot>.pdf` / `<Przedmiot>_<notatka>.pdf` w folderze przedmiotu.
+- `notatki.sty` tylko z pakietów BasicTeX (bez enumitem/titlesec).
+
 ## Konwencje przejęte z praTRD (nie łamać)
 
 - SvelteKit 3: konfiguracja w `vite.config.js`, importy `#lib/...` z pełnym rozszerzeniem; TS 6.x.

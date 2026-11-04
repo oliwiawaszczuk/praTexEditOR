@@ -29,6 +29,7 @@ use super::tectonic;
 use crate::core::paths::Paths;
 use crate::core::{err, CmdResult};
 use crate::projects::registry::{Project, Projects};
+use crate::studia::{self, Target};
 
 const TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -54,6 +55,12 @@ pub struct BuildOpts {
     /// Tectonic always does its full run.
     #[serde(default)]
     pub live: bool,
+    /// Studia project: compile this subject / note instead of the main file.
+    #[serde(default)]
+    pub target: Option<Target>,
+    /// Studia: after a clean build put the PDF in the subject folder.
+    #[serde(default)]
+    pub export: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -73,6 +80,8 @@ pub struct BuildResult {
     pub diagnostics: Vec<Diagnostic>,
     /// Failure outside the document (no engine, no main file, timeout, no network).
     pub message: Option<String>,
+    /// Studia export: where the PDF went.
+    pub exported: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -93,6 +102,8 @@ struct Slot {
     again: Option<BuildOpts>,
     killer: Option<Arc<Killer>>,
     last: Option<BuildResult>,
+    /// Folder the last published SyncTeX paths are relative to (a Studia subject).
+    base: Option<PathBuf>,
 }
 
 #[derive(Default)]
@@ -101,6 +112,11 @@ pub struct Builds(Mutex<HashMap<String, Slot>>);
 impl Builds {
     pub fn any_running(&self) -> bool {
         self.0.lock().unwrap().values().any(|s| s.running)
+    }
+
+    /// Where relative paths in the published SyncTeX data start (None = the main file's folder).
+    pub fn base(&self, pid: &str) -> Option<PathBuf> {
+        self.0.lock().unwrap().get(pid).and_then(|s| s.base.clone())
     }
 }
 
@@ -141,8 +157,7 @@ fn emit_progress(app: &AppHandle, pid: &str, phase: &'static str, downloads: u32
     );
 }
 
-fn diagnostics_of(log_path: &Path, project: &Project, main: &Path, engine_errors: &[String]) -> Vec<Diagnostic> {
-    let base = main.parent().unwrap_or(Path::new("."));
+fn diagnostics_of(log_path: &Path, project: &Project, base: &Path, engine_errors: &[String]) -> Vec<Diagnostic> {
     let mut res = Resolver::new(base, &project.roots);
     let mut ds = match std::fs::read(log_path) {
         Ok(bytes) => log::parse(&String::from_utf8_lossy(&bytes), &mut res),
@@ -159,6 +174,9 @@ struct Run {
     fresh: bool,
     message: Option<String>,
     cancelled: bool,
+    exported: Option<PathBuf>,
+    /// Folder relative SyncTeX paths start from.
+    base: PathBuf,
 }
 
 fn fail(msg: impl Into<String>) -> Run {
@@ -167,6 +185,8 @@ fn fail(msg: impl Into<String>) -> Run {
         fresh: false,
         message: Some(msg.into()),
         cancelled: false,
+        exported: None,
+        base: PathBuf::new(),
     }
 }
 
@@ -174,8 +194,19 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
     let Ok(project) = app.state::<Projects>().get(pid) else {
         return fail("Nie ma takiego projektu");
     };
-    let Some(main) = project.main.clone() else {
-        return fail("Projekt nie ma pliku głównego — wskaż go w drzewie (menu pliku → ★)");
+    let paths = app.state::<Paths>().inner().clone();
+    let build = paths.build_dir(pid);
+    let plan = match &opts.target {
+        Some(t) => match studia::plan(&project, t, &build) {
+            Ok(p) => Some(p),
+            Err(e) => return fail(e),
+        },
+        None => None,
+    };
+    let main = match (&plan, project.main.clone()) {
+        (Some(p), _) => p.wrapper.clone(),
+        (None, Some(m)) => m,
+        (None, None) => return fail("Projekt nie ma pliku głównego — wskaż go w drzewie (menu pliku → ★)"),
     };
     if !main.is_file() {
         return fail(format!(
@@ -183,8 +214,10 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
             main.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()
         ));
     }
-    let paths = app.state::<Paths>().inner().clone();
-    let build = paths.build_dir(pid);
+    let base = match &plan {
+        Some(p) => p.subject.clone(),
+        None => main.parent().map(Path::to_path_buf).unwrap_or_default(),
+    };
     let stem = main.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "main".into());
 
     let (cmd, work) = match opts.engine {
@@ -202,7 +235,7 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
             if let Err(e) = std::fs::create_dir_all(&work) {
                 return fail(e.to_string());
             }
-            (tectonic::build_command(&bin, &main, &work), work)
+            (tectonic::build_command(&bin, &main, &work, plan.as_ref()), work)
         }
         engine => {
             let inst = latexmk::detect(false);
@@ -221,9 +254,7 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
             if let Err(e) = std::fs::create_dir_all(&work) {
                 return fail(e.to_string());
             }
-            if let Some(src) = main.parent() {
-                latexmk::mirror_dirs(src, &work, 4);
-            }
+            latexmk::mirror_dirs(&base, &work, 4);
             if opts.live {
                 latexmk::seed_live(&build.join("latexmk"), &work, 4);
             }
@@ -234,12 +265,12 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
                     _ => "lualatex",
                 }));
                 match tex.filter(|t| t.is_file()) {
-                    Some(t) => (latexmk::command_live(&t, &main, &work), work),
-                    None => (latexmk::command(&bin, flag, &main, &work), work),
+                    Some(t) => (latexmk::command_live(&t, &main, &work, plan.as_ref()), work),
+                    None => (latexmk::command(&bin, flag, &main, &work, plan.as_ref()), work),
                 }
             } else {
                 latexmk::purge_poisoned(&work, 4);
-                (latexmk::command(&bin, flag, &main, &work), work)
+                (latexmk::command(&bin, flag, &main, &work, plan.as_ref()), work)
             }
         }
     };
@@ -291,6 +322,8 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
             fresh: false,
             message: None,
             cancelled: true,
+            exported: None,
+            base,
         };
     }
     let status = match status {
@@ -323,7 +356,7 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
         }
     }
 
-    let diagnostics = diagnostics_of(&build.join("doc.log"), &project, &main, &engine_errors);
+    let diagnostics = diagnostics_of(&build.join("doc.log"), &project, &base, &engine_errors);
     let errors = log::counts(&diagnostics).0;
     let mut message = None;
     if !fresh && errors == 0 {
@@ -338,14 +371,26 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
         });
     }
 
-    if fresh && errors == 0 && opts.copy_pdf && !opts.live {
-        let _ = put(&build.join("doc.pdf"), &main.with_extension("pdf"), true);
+    let mut exported = None;
+    match &plan {
+        Some(p) if opts.export && errors == 0 && message.is_none() && !opts.live => {
+            match put(&build.join("doc.pdf"), &p.export, true) {
+                Ok(()) => exported = Some(p.export.clone()),
+                Err(e) => message = Some(format!("Nie udało się zapisać PDF: {e}")),
+            }
+        }
+        None if fresh && errors == 0 && opts.copy_pdf && !opts.live => {
+            let _ = put(&build.join("doc.pdf"), &main.with_extension("pdf"), true);
+        }
+        _ => {}
     }
     Run {
         diagnostics,
         fresh,
         message,
         cancelled: false,
+        exported,
+        base,
     }
 }
 
@@ -369,6 +414,7 @@ fn worker(app: AppHandle, pid: String, mut opts: BuildOpts, mut killer: Arc<Kill
             engine: opts.engine,
             diagnostics: run.diagnostics,
             message: run.message,
+            exported: run.exported,
         };
         let next = {
             let builds = app.state::<Builds>();
@@ -377,6 +423,9 @@ fn worker(app: AppHandle, pid: String, mut opts: BuildOpts, mut killer: Arc<Kill
             // A cancelled run keeps the previous result (its PDF is still shown).
             if !result.cancelled {
                 slot.last = Some(result.clone());
+                if result.fresh {
+                    slot.base = Some(run.base.clone()).filter(|b| opts.target.is_some() && !b.as_os_str().is_empty());
+                }
             }
             match slot.again.take() {
                 Some(o) => {
@@ -412,6 +461,10 @@ pub fn build_request(app: AppHandle, builds: State<'_, Builds>, pid: String, opt
         // A queued full build is never downgraded to a live one.
         let queued_full = slot.again.as_ref().is_some_and(|a| !a.live);
         if !(opts.live && queued_full) {
+            // An export asked for while another build runs must not be lost to the next auto build.
+            let keep_export = slot.again.as_ref().is_some_and(|a| a.export && a.target == opts.target);
+            let mut opts = opts;
+            opts.export |= keep_export;
             slot.again = Some(opts);
         }
         // The running live pass is already stale: stop it, the queued request runs next.
@@ -473,8 +526,8 @@ pub async fn build_state(app: AppHandle, pid: String) -> CmdResult<BuildState> {
         if !pdf.is_file() {
             return Ok(BuildState { running: false, last: None });
         }
-        let diagnostics = match &project.main {
-            Some(main) => diagnostics_of(&paths.build_dir(&pid).join("doc.log"), &project, main, &[]),
+        let diagnostics = match project.main.as_deref().and_then(Path::parent) {
+            Some(base) => diagnostics_of(&paths.build_dir(&pid).join("doc.log"), &project, base, &[]),
             None => Vec::new(),
         };
         let errors = log::counts(&diagnostics).0;
@@ -490,6 +543,7 @@ pub async fn build_state(app: AppHandle, pid: String) -> CmdResult<BuildState> {
                 engine: Engine::Tectonic,
                 diagnostics,
                 message: None,
+                exported: None,
             }),
         })
     })

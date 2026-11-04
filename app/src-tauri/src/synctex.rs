@@ -275,7 +275,12 @@ fn index_for(app: &AppHandle, pid: &str) -> CmdResult<Arc<Index>> {
         }
     }
     let f = std::fs::File::open(&file).map_err(err)?;
-    let base = project.main.as_deref().and_then(Path::parent).map(Path::to_path_buf).unwrap_or_default();
+    // A Studia build runs from the subject folder; otherwise paths start at the main file.
+    let base = app
+        .state::<crate::engine::build::Builds>()
+        .base(pid)
+        .or_else(|| project.main.as_deref().and_then(Path::parent).map(Path::to_path_buf))
+        .unwrap_or_default();
     let roots = project.roots.clone();
     let keep = move |p: &Path| roots.iter().any(|r| p.starts_with(r));
     let ix = Arc::new(Index::parse(BufReader::new(flate2::read::GzDecoder::new(f)), &base, &keep));

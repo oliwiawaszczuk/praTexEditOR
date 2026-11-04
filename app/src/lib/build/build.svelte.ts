@@ -12,7 +12,9 @@ import { register } from "#lib/core/commands.svelte.ts";
 import { baseName, wsGet, wsSet, type Project } from "#lib/core/projects.svelte.ts";
 import { call, on } from "#lib/core/tauri.ts";
 import { editor } from "#lib/editor/bridge.svelte.ts";
+import { resolveTarget, subjectName, subjectOf, targetKey, type Scope, type Target } from "#lib/studia/target.ts";
 import { showCol } from "#lib/tabs/projekt/layout.svelte.ts";
+import { promptText } from "#lib/ui/dialogs.svelte.ts";
 import { toast } from "#lib/ui/toast.svelte.ts";
 
 export type Severity = "error" | "warning" | "box";
@@ -45,6 +47,8 @@ export interface BuildResult {
   engine: EngineId;
   diagnostics: Diagnostic[];
   message: string | null;
+  /** Studia export: where the PDF went. */
+  exported: string | null;
 }
 
 interface Progress {
@@ -62,6 +66,8 @@ const DEFAULT_FILTERS: Filters = { error: true, warning: true, box: false };
 
 /** TeX by-products and the exported PDF never trigger a build (no loops). */
 const IGNORED = /\.(aux|log|synctex\.gz|synctex|fdb_latexmk|fls|out|toc|lof|lot|bbl|blg|nav|snm|vrb|xdv|run\.xml|bcf)$|(^|[\\/])\.DS_Store$|[\\/]\.git([\\/]|$)/i;
+
+const PDF_FILE = /\.pdf$/i;
 
 const isUnder = (p: string, dir: string): boolean => p === dir || p.startsWith(dir + "/") || p.startsWith(dir + "\\");
 
@@ -91,6 +97,15 @@ export class Build {
   #cursor = -1;
   #autoOpened = false;
 
+  /** Template "Studia" (a root with notatki.sty): null for an ordinary project. */
+  studia = $state.raw<{ root: string } | null>(null);
+  /** The file shown in the editor (set by the workspace): decides which subject / note is built. */
+  focus = $state<string | null>(null);
+  /** Key of the target the preview shows / of the one an export was asked for. */
+  #viewKey = "";
+  #exportKey = "";
+  #offStudia: (() => void) | null = null;
+
   constructor(project: () => Project) {
     this.#project = project;
     this.#offs.push(
@@ -118,9 +133,113 @@ export class Build {
     if (v) this.request();
   }
 
-  /** Per-project engine, else the default from Ustawienia › Kompilacja. */
+  /** Per-project engine, else the default from Ustawienia › Kompilacja (Studia: LuaLaTeX). */
   get engine(): EngineId {
-    return wsGet<EngineId | null>("build.engine", null) ?? getSetting<EngineId>("build.engine", "tectonic");
+    return wsGet<EngineId | null>("build.engine", null) ?? (this.studia ? "lualatex" : getSetting<EngineId>("build.engine", "tectonic"));
+  }
+
+  // ── Studia: subject / note ─────────────────────────────────────────────────
+
+  /** What the PDF column shows: the whole subject or only the open note. */
+  get scope(): Scope {
+    return wsGet<Scope>("studia.scope", "subject");
+  }
+
+  setScope(s: Scope): void {
+    wsSet("studia.scope", s);
+    this.#syncTarget();
+  }
+
+  #targetFor(scope: Scope): Target | null {
+    const st = this.studia;
+    if (!st) return null;
+    const last = wsGet<string | null>("studia.last", null);
+    return resolveTarget(st.root, this.focus, scope) ?? (last ? resolveTarget(st.root, last, scope, true) : null);
+  }
+
+  /** The target of the current view (null = not a Studia project, or nothing to build yet). */
+  get target(): Target | null {
+    return this.#targetFor(this.scope);
+  }
+
+  /** The workspace tells which file is in the editor. */
+  setFocus(path: string | null): void {
+    this.focus = path;
+    const st = this.studia;
+    if (!st) return;
+    const subject = subjectOf(st.root, path);
+    if (subject && subject !== wsGet<string | null>("studia.last", null)) wsSet("studia.last", subject);
+    this.#syncTarget();
+  }
+
+  /** Another subject (or another note in note mode): build it. */
+  #syncTarget(): void {
+    const key = targetKey(this.target);
+    if (!key || key === this.#viewKey) return;
+    if (this.loaded && this.auto) this.request();
+  }
+
+  async newNote(subject?: string): Promise<void> {
+    const st = this.studia;
+    if (!st) return;
+    const dir = subject ?? subjectOf(st.root, this.focus) ?? wsGet<string | null>("studia.last", null);
+    if (!dir) {
+      toast("Najpierw wybierz przedmiot (otwórz plik z jego folderu)", { icon: "alert" });
+      return;
+    }
+    const title = await promptText(`Nowa notatka: ${subjectName(dir)}`, { label: "Temat", confirmText: "Utwórz" });
+    if (!title?.trim()) return;
+    const date = new Date().toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
+    try {
+      const path = await call<string>("studia_new_note", { pid: this.pid, subject: dir, title, date });
+      showCol("mid");
+      await editor()?.open(path, { focus: true });
+    } catch (e) {
+      toast(String(e instanceof Error ? e.message : e), { icon: "alert", error: true });
+    }
+  }
+
+  async newSubject(): Promise<void> {
+    const name = await promptText("Nowy przedmiot", { label: "Nazwa", confirmText: "Utwórz" });
+    if (!name?.trim()) return;
+    try {
+      const dir = await call<string>("studia_new_subject", { pid: this.pid, name });
+      wsSet("studia.last", dir);
+      await this.newNote(dir);
+    } catch (e) {
+      toast(String(e instanceof Error ? e.message : e), { icon: "alert", error: true });
+    }
+  }
+
+  /** PDF of the whole subject / of the open note into the subject folder. */
+  async exportPdf(which: Scope): Promise<void> {
+    const t = this.#targetFor(which);
+    if (!t) {
+      toast("Najpierw otwórz plik z folderu przedmiotu", { icon: "alert" });
+      return;
+    }
+    if (which === "note" && !t.note) {
+      toast("Otwórz notatkę z folderu content/, żeby wyeksportować ją osobno", { icon: "alert" });
+      return;
+    }
+    await this.exportTarget(t);
+  }
+
+  async exportTarget(t: Target): Promise<void> {
+    const saved = (await editor()?.saveAll()) ?? [];
+    for (const p of saved) this.#echo.add(p);
+    this.#echoUntil = performance.now() + 1500;
+    this.request("full", { export: true, target: t });
+  }
+
+  #registerStudia(): void {
+    this.#offStudia = register([
+      { id: "studia.newNote", title: "Nowa notatka", icon: "filePlus", keys: "mod+alt+n", group: "Studia", run: () => void this.newNote() },
+      { id: "studia.newSubject", title: "Nowy przedmiot", icon: "folderPlus", group: "Studia", run: () => void this.newSubject() },
+      { id: "studia.exportSubject", title: "Eksportuj PDF przedmiotu", icon: "download", group: "Studia", run: () => void this.exportPdf("subject") },
+      { id: "studia.exportNote", title: "Eksportuj PDF tej notatki", icon: "download", group: "Studia", run: () => void this.exportPdf("note") },
+      { id: "studia.scope", title: "Podgląd: cały przedmiot / ta notatka", icon: "file", keys: "mod+alt+e", group: "Studia", run: () => this.setScope(this.scope === "subject" ? "note" : "subject") },
+    ]);
   }
 
   get engineOverride(): EngineId | null {
@@ -139,6 +258,12 @@ export class Build {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   async start(): Promise<void> {
+    try {
+      this.studia = await call<{ root: string } | null>("studia_info", { pid: this.pid });
+    } catch {
+      // No shell (plain browser): an ordinary project.
+    }
+    if (this.studia) this.#registerStudia();
     // Subscribe first, then ask: nothing emitted in between is lost.
     this.#unlisten.push(
       on<Progress>("build-progress", (p) => {
@@ -159,7 +284,7 @@ export class Build {
       // What the cache holds is the result of the *last session* (possibly a half-typed
       // moment). When a build on open follows, its errors would only flash red: show the
       // PDF now, the real verdict comes with that build.
-      const rebuild = this.auto && !!this.#project().main;
+      const rebuild = this.auto && this.canBuild;
       if (s.last && !this.last) this.last = rebuild && !s.running ? { ...s.last, diagnostics: [], ok: true } : s.last;
       if (s.running) this.phase = "running";
     } catch {
@@ -167,11 +292,16 @@ export class Build {
     }
     this.loaded = true;
     // Files may have changed while the app was closed: one build on open.
-    if (this.auto && this.phase === "idle" && this.#project().main) this.request();
+    if (this.auto && this.phase === "idle" && this.canBuild) this.request();
+  }
+
+  get canBuild(): boolean {
+    return this.studia ? true : !!this.#project().main;
   }
 
   dispose(): void {
     for (const f of this.#offs) f();
+    this.#offStudia?.();
     for (const u of this.#unlisten) void u.then((f) => f());
     if (this.#timer) clearTimeout(this.#timer);
     if (this.#fullTimer) clearTimeout(this.#fullTimer);
@@ -184,19 +314,27 @@ export class Build {
 
   // ── Requests ───────────────────────────────────────────────────────────────
 
-  request(mode: "full" | "live" = "full"): void {
+  request(mode: "full" | "live" = "full", more: { export?: boolean; target?: Target } = {}): void {
     if (this.#timer) clearTimeout(this.#timer);
     this.#timer = null;
     if (mode === "full" && this.#fullTimer) {
       clearTimeout(this.#fullTimer);
       this.#fullTimer = null;
     }
-    if (!this.#project().main) {
-      this.#done({ pid: this.pid, rev: this.last?.rev ?? 0, fresh: false, ok: false, cancelled: false, durationMs: 0, engine: this.engine, diagnostics: [], message: "Projekt nie ma pliku głównego — wskaż go w drzewie (menu pliku → ★)" });
+    let target: Target | null = null;
+    if (this.studia) {
+      target = more.target ?? this.target;
+      // Nothing open yet: the PDF column asks for a note, no error.
+      if (!target) return;
+      if (more.export) this.#exportKey = targetKey(target);
+      else this.#viewKey = targetKey(target);
+    } else if (!this.#project().main) {
+      this.#done({ pid: this.pid, rev: this.last?.rev ?? 0, fresh: false, ok: false, cancelled: false, durationMs: 0, engine: this.engine, diagnostics: [], message: "Projekt nie ma pliku głównego — wskaż go w drzewie (menu pliku → ★)", exported: null });
       return;
     }
+    const full = mode === "full" || !!more.export;
     if (this.phase === "idle") this.phase = "pending";
-    call("build_request", { pid: this.pid, opts: { engine: this.engine, copyPdf: getSetting("build.copyPdf", false), live: mode === "live" } }).catch((e) => {
+    call("build_request", { pid: this.pid, opts: { engine: this.engine, copyPdf: getSetting("build.copyPdf", false), live: !full, target, export: !!more.export } }).catch((e) => {
       this.phase = "idle";
       toast(String(e instanceof Error ? e.message : e), { icon: "alert", error: true });
     });
@@ -223,6 +361,8 @@ export class Build {
     const exported = main ? main.replace(/\.[^./\\]+$/, ".pdf") : null;
     const relevant = paths.filter((p) => {
       if (this.#echo.delete(p)) return false;
+      // Studia: the exported PDFs lie in the project too.
+      if (this.studia && PDF_FILE.test(p)) return false;
       return !IGNORED.test(p) && p !== exported && this.#project().roots.some((r) => isUnder(p, r));
     });
     if (!relevant.length || !this.auto) return;
@@ -258,6 +398,13 @@ export class Build {
       this.#autoOpened = false;
     }
     if (r.message) toast(r.message, { icon: "alert", error: true, ms: 6000 });
+    if (r.exported) {
+      toast(`Zapisano ${r.exported.split(/[\\/]/).pop()}`, { icon: "check" });
+      // The export built something else than the preview shows: bring the preview back.
+      const back = this.#exportKey !== this.#viewKey;
+      this.#exportKey = "";
+      if (back) this.request();
+    }
   }
 
   // ── Errors ─────────────────────────────────────────────────────────────────

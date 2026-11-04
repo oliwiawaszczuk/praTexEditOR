@@ -8,6 +8,8 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 
+use crate::studia::Plan;
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Installed {
@@ -96,19 +98,39 @@ pub fn detect(refresh: bool) -> Installed {
     i
 }
 
+/// The file argument and working dir: next to `main`, or — for a Studia wrapper — the file
+/// by full path, run from the subject folder with the project root on TEXINPUTS.
+fn place(cmd: &mut Command, main: &Path, plan: Option<&Plan>) {
+    match plan {
+        Some(p) => {
+            cmd.arg(main).current_dir(&p.subject);
+            // The empty trailing entry keeps the default search path.
+            let mut dirs = vec![p.root.clone()];
+            dirs.extend(std::env::var_os("TEXINPUTS").map(|t| std::env::split_paths(&t).collect::<Vec<_>>()).unwrap_or_default());
+            if let Ok(mut joined) = std::env::join_paths(dirs) {
+                joined.push(if cfg!(windows) { ";" } else { ":" });
+                cmd.env("TEXINPUTS", joined);
+            }
+        }
+        None => {
+            cmd.arg(main.file_name().unwrap_or_default());
+            if let Some(dir) = main.parent().filter(|d| !d.as_os_str().is_empty()) {
+                cmd.current_dir(dir);
+            }
+        }
+    }
+}
+
 /// `latexmk -pdf|-xelatex|-lualatex` for `main`, all outputs and aux files in `outdir`.
 /// `flag` is the latexmk engine switch.
-pub fn command(bin: &Path, flag: &str, main: &Path, outdir: &Path) -> Command {
+pub fn command(bin: &Path, flag: &str, main: &Path, outdir: &Path, plan: Option<&Plan>) -> Command {
     let mut cmd = Command::new(bin);
     cmd.arg(flag)
         .args(["-interaction=nonstopmode", "-file-line-error", "-synctex=1"])
         // Keep going past errors (reruns, bibtex): the PDF shows as much as possible.
         .arg("-f")
-        .arg(format!("-outdir={}", outdir.display()))
-        .arg(main.file_name().unwrap_or_default());
-    if let Some(dir) = main.parent().filter(|d| !d.as_os_str().is_empty()) {
-        cmd.current_dir(dir);
-    }
+        .arg(format!("-outdir={}", outdir.display()));
+    place(&mut cmd, main, plan);
     // latexmk calls pdflatex/bibtex by name: put the TeX bin folder first on PATH.
     if let Some(texbin) = bin.parent() {
         let mut paths = vec![texbin.to_path_buf()];
@@ -125,14 +147,11 @@ pub fn command(bin: &Path, flag: &str, main: &Path, outdir: &Path) -> Command {
 /// One bare pass of the engine itself (no latexmk, no bibliography, no reruns) into the
 /// same `outdir` latexmk uses, so references and citations still come from the aux/bbl
 /// of the last full build. This is the typing preview: about half the time of a full run.
-pub fn command_live(engine: &Path, main: &Path, outdir: &Path) -> Command {
+pub fn command_live(engine: &Path, main: &Path, outdir: &Path, plan: Option<&Plan>) -> Command {
     let mut cmd = Command::new(engine);
     cmd.args(["-interaction=nonstopmode", "-file-line-error", "-synctex=1"])
-        .arg(format!("-output-directory={}", outdir.display()))
-        .arg(main.file_name().unwrap_or_default());
-    if let Some(dir) = main.parent().filter(|d| !d.as_os_str().is_empty()) {
-        cmd.current_dir(dir);
-    }
+        .arg(format!("-output-directory={}", outdir.display()));
+    place(&mut cmd, main, plan);
     if let Some(texbin) = engine.parent() {
         let mut paths = vec![texbin.to_path_buf()];
         if let Some(p) = std::env::var_os("PATH") {

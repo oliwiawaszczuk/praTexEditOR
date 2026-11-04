@@ -16,6 +16,7 @@
   import Icon from "#lib/ui/Icon.svelte";
   import { toast } from "#lib/ui/toast.svelte.ts";
   import { tip } from "#lib/ui/tooltip.svelte.ts";
+  import { noteOf, subjectName, subjectOf } from "#lib/studia/target.ts";
   import { dropTarget, pressDrag } from "./dnd.svelte.ts";
   import { fileKind, KIND_ICON, kindColor } from "./kinds.ts";
   import { setActiveTree, TreeStore, type Entry, type Row } from "./tree.svelte.ts";
@@ -133,7 +134,26 @@
         { icon: "trash", label: many ? `Do kosza (${targets.length})` : "Do kosza", keys: keysOf("tree.trash"), danger: true, run: () => void tree.trash(targets) },
       );
     }
+    const studia = studiaItems(r);
+    if (studia.length) items.unshift(...studia, "sep");
     openMenu(e, items);
+  }
+
+  /** Template "Studia": PDF of a subject / note and a new note, right on the tree entry. */
+  function studiaItems(r: Row): MenuEntry[] {
+    const b = activeBuild();
+    const root = b?.studia?.root;
+    if (!b || !root || r.root !== undefined) return [];
+    const subject = subjectOf(root, r.path, r.dir);
+    if (!subject) return [];
+    const out: MenuEntry[] = [];
+    const note = noteOf(root, r.path);
+    if (note) out.push({ icon: "download", label: "PDF z tej notatki", run: () => void b.exportTarget({ subject, note }) });
+    out.push(
+      { icon: "download", label: `PDF przedmiotu „${subjectName(subject)}”`, run: () => void b.exportTarget({ subject }) },
+      { icon: "filePlus", label: "Nowa notatka w tym przedmiocie", keys: keysOf("studia.newNote"), run: () => void b.newNote(subject) },
+    );
+    return out;
   }
 
   async function copyRel(path: string): Promise<void> {
