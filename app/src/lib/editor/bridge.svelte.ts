@@ -1,6 +1,8 @@
 // What the rest of the app may ask of the editor, without importing CodeMirror: the
 // editor is a separate chunk loaded with the project view (docs/02-plan.md §11).
 
+import type { WordHint } from "#lib/core/syncword.ts";
+
 export interface EditorBridge {
   open(path: string, opts?: { preview?: boolean; focus?: boolean }): Promise<void>;
   isDirty(path: string): boolean;
@@ -10,8 +12,9 @@ export interface EditorBridge {
   saveAll(): Promise<string[]>;
   /** Compile diagnostics → marks in the editor (all files at once; replaces the old). */
   setDiagnostics(list: BridgeDiagnostic[]): void;
-  /** Open `path`, put the cursor on `line` and flash it. */
-  reveal(path: string, line: number): Promise<void>;
+  /** Open `path`, put the cursor on `line` and flash it; `sync`: SyncTeX target, the word
+   * (`hint`) near that line stays marked until the next action. */
+  reveal(path: string, line: number, sync?: { hint: WordHint | null }): Promise<void>;
   /** Insert a VS Code style snippet at the selection (wrapping it). False = no text editor. */
   insertSnippet(body: string): boolean;
   /** Insert plain text / a snippet at a window point (drop) or at the cursor. */
@@ -26,8 +29,8 @@ export interface EditorBridge {
   selection(): { text: string; source: string } | null;
   /** Undo the last edit of the visible file. */
   undo(): void;
-  /** File and 1-based line of the cursor in the visible text tab. */
-  cursor(): { path: string; line: number } | null;
+  /** File, 1-based line and word (SyncTeX hint) of the cursor in the visible text tab. */
+  cursor(): { path: string; line: number; hint: WordHint | null } | null;
   /** Cursor moved to another line (or another file); returns the unsubscribe. */
   onCursor(cb: (c: { path: string; line: number }) => void): () => void;
 }

@@ -45,8 +45,19 @@ struct HBox {
     h: f32,
     tag: u32,
     line: u32,
-    /// (x, tag, line) of every point record inside, in output order.
-    points: Vec<(f32, u32, u32)>,
+    /// Every point record inside, in output order.
+    points: Vec<Point>,
+}
+
+/// (x, tag, line) of a point record.
+type Point = (f32, u32, u32);
+
+/// An hbox being parsed: its index on the page, its glue records and the glue pairs of the
+/// boxes inside it.
+struct OpenBox {
+    i: usize,
+    glue: Vec<Point>,
+    inner: Vec<(u32, u32)>,
 }
 
 #[derive(Default)]
@@ -95,8 +106,9 @@ impl Index {
         let (mut unit, mut mag) = (1.0f64, 1000.0f64);
         let (mut xoff, mut yoff) = (0.0f64, 0.0f64);
         let mut page: Option<usize> = None;
-        // Open boxes: Some(index into the page) for hboxes, None for vboxes.
-        let mut stack: Vec<Option<usize>> = Vec::new();
+        // Open boxes: Some for hboxes, None for vboxes.
+        let mut stack: Vec<Option<OpenBox>> = Vec::new();
+        let mut luatex = false;
         for line in reader.lines() {
             let Ok(line) = line else { break };
             let Some(first) = line.chars().next() else { continue };
@@ -106,6 +118,7 @@ impl Index {
                     let Some((tag, path)) = line[6..].split_once(':') else { continue };
                     let (Ok(tag), false) = (tag.parse::<u32>(), path.is_empty()) else { continue };
                     let p = Path::new(path);
+                    luatex |= p.file_name().is_some_and(|n| n.to_string_lossy().contains("luatex"));
                     let full = if p.is_absolute() { p.to_path_buf() } else { base.join(p) };
                     if let Ok(c) = full.canonicalize() {
                         if keep(&c) {
@@ -125,16 +138,26 @@ impl Index {
                     while ix.pages.len() <= i {
                         ix.pages.push(Vec::new());
                     }
-                    page = Some(i);
+                    if let Some(p) = page {
+                        ix.close_all(p, &mut stack, luatex);
+                    }
                     stack.clear();
+                    page = Some(i);
                 }
                 '}' => {
+                    if let Some(p) = page {
+                        ix.close_all(p, &mut stack, luatex);
+                    }
                     page = None;
-                    stack.clear();
                 }
                 '[' => stack.push(None),
                 ']' | ')' => {
-                    stack.pop();
+                    if let (Some(p), Some(Some(b))) = (page, stack.pop()) {
+                        let pairs = ix.close_box(p, b, luatex);
+                        if let Some(Some(parent)) = stack.iter_mut().rev().find(|s| s.is_some()) {
+                            parent.inner.extend(pairs);
+                        }
+                    }
                 }
                 '(' | 'x' | 'g' | 'k' | '$' | 'h' | 'v' => {
                     let (Some(p), Some((tag, ln, h, v, size))) = (page, fields(rest)) else {
@@ -159,16 +182,55 @@ impl Index {
                         let i = ix.pages[p].len();
                         ix.pages[p].push(b);
                         push_unique(ix.by_box.entry((tag, ln)).or_default(), (p, i));
-                        stack.push(Some(i));
-                    } else if let Some(Some(i)) = stack.iter().rev().find(|s| s.is_some()) {
-                        ix.pages[p][*i].points.push((x, tag, ln));
-                        push_unique(ix.by_point.entry((tag, ln)).or_default(), (p, *i));
+                        stack.push(Some(OpenBox { i, glue: Vec::new(), inner: Vec::new() }));
+                    } else if let Some(Some(b)) = stack.iter_mut().rev().find(|s| s.is_some()) {
+                        ix.pages[p][b.i].points.push((x, tag, ln));
+                        if first == 'g' {
+                            b.glue.push((x, tag, ln));
+                        }
                     }
                 }
                 _ => {}
             }
         }
+        if let Some(p) = page {
+            ix.close_all(p, &mut stack, luatex);
+        }
         ix
+    }
+
+    fn close_all(&mut self, p: usize, stack: &mut Vec<Option<OpenBox>>, luatex: bool) {
+        while let Some(s) = stack.pop() {
+            if let Some(b) = s {
+                self.close_box(p, b, luatex);
+            }
+        }
+    }
+
+    /// Indexes the points of a finished hbox. LuaTeX tags nodes made after reading (font
+    /// kerns and glyph runs from luaotfload, the line's left/right skips) with wherever the
+    /// input was at that moment, often a later file: there only the (tag, line) pairs of
+    /// interword glue inside the line are real, so other points are dropped. A line without
+    /// inner glue (a heading) falls back to all glue of the box and the boxes inside it.
+    /// Returns the glue pairs for the parent box.
+    fn close_box(&mut self, p: usize, open: OpenBox, luatex: bool) -> Vec<(u32, u32)> {
+        let OpenBox { i, glue, mut inner } = open;
+        let b = &mut self.pages[p][i];
+        if luatex {
+            let (left, right) = (b.x + 0.5, b.x + b.w - 0.5);
+            let mut real: Vec<(u32, u32)> = glue.iter().filter(|g| g.0 > left && g.0 < right).map(|g| (g.1, g.2)).collect();
+            if real.is_empty() {
+                real = glue.iter().map(|g| (g.1, g.2)).chain(inner.iter().copied()).collect();
+            }
+            if !real.is_empty() {
+                b.points.retain(|q| real.contains(&(q.1, q.2)));
+            }
+        }
+        for q in &b.points {
+            push_unique(self.by_point.entry((q.1, q.2)).or_default(), (p, i));
+        }
+        inner.extend(glue.iter().map(|g| (g.1, g.2)));
+        inner
     }
 
     fn rect(&self, (p, i): (usize, usize)) -> Rect {
@@ -371,10 +433,38 @@ mod tests {
         check("pdflatex.synctex");
     }
 
-    /// Click just left of every word end in both fixtures: the line must come back.
+    #[test]
+    fn lualatex_both_ways() {
+        check("lualatex.synctex");
+    }
+
+    /// LuaTeX tags font kerns (and the glyphs after them) with the input line at the time
+    /// of node processing: here main.tex:10 (\newpage) for words on page 1. No click on
+    /// page 1 may land there.
+    #[test]
+    fn lualatex_stale_tags_are_ignored() {
+        let (ix, project) = load("lualatex.synctex");
+        let main = project.join("main.tex");
+        // Text lines only: the page header and footer are made at shipout (\newpage) in every engine.
+        for b in ix.pages[0].iter().filter(|b| b.h > 0.0 && b.y < 700.0) {
+            let mut x = b.x;
+            while x < b.x + b.w {
+                if let Some(hit) = ix.inverse(0, x, b.y + b.h / 2.0) {
+                    assert!(!(hit.file == main && hit.line == 10), "x={x} y={}", b.y);
+                }
+                x += 2.0;
+            }
+        }
+        // A word with a kern inside ("akapit", main.tex:5) still maps to its own line.
+        let r = ix.forward(&main, 5);
+        let hit = ix.inverse(0, r[0].x + 35.0, r[0].y + r[0].h / 2.0).unwrap();
+        assert_eq!((hit.file, hit.line), (main, 5));
+    }
+
+    /// Click just left of every word end in all fixtures: the line must come back.
     #[test]
     fn every_word_maps_to_its_line() {
-        for name in ["tectonic.synctex", "pdflatex.synctex"] {
+        for name in ["tectonic.synctex", "pdflatex.synctex", "lualatex.synctex"] {
             let (ix, _) = load(name);
             let (mut ok, mut all) = (0, 0);
             for (p, boxes) in ix.pages.iter().enumerate() {

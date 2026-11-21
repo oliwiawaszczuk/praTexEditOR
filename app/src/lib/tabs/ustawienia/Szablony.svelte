@@ -1,7 +1,8 @@
 <script lang="ts">
-  // Ustawienia › Szablony: every template for "Nowy projekt" — built-in (preview only,
-  // duplicate to change) and the user's own (rename, edit files, add / remove files,
-  // choose the main file, delete). Edits save shortly after the last keystroke.
+  // Ustawienia › Szablony: every template for "Nowy projekt". All can be edited (files, add /
+  // remove, main file); the first edit of a built-in makes a copy of it ("Przywróć domyślny"
+  // drops it). Only the user's own can be renamed and deleted. Edits save shortly after the
+  // last keystroke.
   import { onDestroy, onMount } from "svelte";
   import { templatesList, type TemplateInfo } from "#lib/core/projects.svelte.ts";
   import { call } from "#lib/core/tauri.ts";
@@ -30,7 +31,7 @@
   const sel = $derived(list.find((t) => t.id === selId) ?? null);
   const builtin = $derived(list.filter((t) => !t.custom));
   const own = $derived(list.filter((t) => t.custom));
-  const editable = $derived(!!sel?.custom && !readError);
+  const editable = $derived(!!sel && !readError);
 
   async function reload(): Promise<void> {
     list = await templatesList().catch(() => []);
@@ -51,7 +52,11 @@
     // switch `sel` / `filePath` already point elsewhere.
     const p = pending;
     pending = null;
-    if (p) await call("template_write", p).catch((e) => showError("Nie udało się zapisać szablonu", e));
+    if (p) {
+      await call("template_write", p).catch((e) => showError("Nie udało się zapisać szablonu", e));
+      // The first edit of a built-in creates its copy: the list shows "zmieniony".
+      if (list.find((t) => t.id === p.id)?.modified === false) await reload();
+    }
   }
 
   async function pick(id: string): Promise<void> {
@@ -131,7 +136,7 @@
   }
 
   async function addFile(): Promise<void> {
-    if (!sel?.custom) return;
+    if (!sel) return;
     const p = await promptText("Nowy plik w szablonie", { label: "ścieżka, np. rozdzialy/01-wstep.tex", confirmText: "Dodaj" });
     if (!p?.trim()) return;
     try {
@@ -145,7 +150,7 @@
   }
 
   async function addDir(): Promise<void> {
-    if (!sel?.custom) return;
+    if (!sel) return;
     const p = await promptText("Nowy folder w szablonie", { label: "ścieżka, np. img albo rozdzialy/dodatki", confirmText: "Dodaj" });
     if (!p?.trim()) return;
     try {
@@ -157,7 +162,7 @@
   }
 
   async function removeFile(path: string): Promise<void> {
-    if (!sel?.custom) return;
+    if (!sel) return;
     const isDir = files.find((f) => f.path === path)?.dir;
     if (!(await confirmAction(isDir ? "Usunąć folder z szablonu?" : "Usunąć plik z szablonu?", isDir ? `${path} — razem z zawartością` : path, { confirmText: "Usuń", danger: true }))) return;
     try {
@@ -176,13 +181,30 @@
   }
 
   async function setMain(path: string): Promise<void> {
-    if (!sel?.custom) return;
+    if (!sel) return;
     try {
       await call("template_set_main", { id: sel.id, path });
       await reload();
       toast("Ustawiono plik główny szablonu", { icon: "star" });
     } catch (e) {
       void showError("Nie udało się ustawić pliku głównego", e);
+    }
+  }
+
+  async function reset(): Promise<void> {
+    if (!sel || sel.custom || !sel.modified) return;
+    if (!(await confirmAction("Przywrócić domyślny szablon?", `„${sel.name}” — Twoje zmiany zostaną usunięte, projekty utworzone wcześniej zostają.`, { confirmText: "Przywróć", danger: true }))) return;
+    const id = sel.id;
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = null;
+    pending = null;
+    try {
+      await call("template_reset", { id });
+      await reload();
+      await pick(id);
+      toast("Przywrócono domyślny szablon", { icon: "check" });
+    } catch (e) {
+      void showError("Nie udało się przywrócić szablonu", e);
     }
   }
 
@@ -224,8 +246,10 @@
           <button class="icon-btn danger" use:tip={"Usuń szablon"} onclick={() => void remove()}><Icon name="trash" size={15} /></button>
         {:else}
           <span class="title ro">{sel.name}</span>
-          <span class="badge">wbudowany — tylko podgląd</span>
-          <button class="btn" onclick={() => void create(sel.id)}><Icon name="duplicate" size={13} /> Duplikuj, aby edytować</button>
+          <span class="badge">{sel.modified ? "wbudowany — zmieniony" : "wbudowany"}</span>
+          {#if sel.modified}
+            <button class="btn" onclick={() => void reset()}><Icon name="refresh" size={13} /> Przywróć domyślny</button>
+          {/if}
         {/if}
       </div>
 
@@ -233,7 +257,7 @@
         <div class="files">
           <div class="fh">
             <span>Pliki</span>
-            {#if sel.custom}
+            {#if sel}
               <span class="fa">
                 <button class="icon-btn" use:tip={"Nowy folder"} onclick={() => void addDir()}><Icon name="folderPlus" size={14} /></button>
                 <button class="icon-btn" use:tip={"Nowy plik"} onclick={() => void addFile()}><Icon name="plus" size={14} /></button>
@@ -248,11 +272,11 @@
                 <button class="fname" style:padding-left="{8 + depth(f.path) * 12}px" use:tip={f.path} onclick={() => void openFile(f.path)}>
                   <Icon name="file" size={13} /><span class="t">{leaf(f.path)}</span><small>{size(f.size)}</small>
                 </button>
-                <button class="icon-btn mini" class:on={f.path === sel.main} disabled={!sel.custom} use:tip={f.path === sel.main ? "Plik główny" : "Ustaw jako główny"} onclick={() => void setMain(f.path)}>
+                <button class="icon-btn mini" class:on={f.path === sel.main} use:tip={f.path === sel.main ? "Plik główny" : "Ustaw jako główny"} onclick={() => void setMain(f.path)}>
                   <Icon name="star" size={13} />
                 </button>
               {/if}
-              {#if sel.custom}<button class="icon-btn mini danger" use:tip={"Usuń plik"} onclick={() => void removeFile(f.path)}><Icon name="close" size={13} /></button>{/if}
+              {#if sel}<button class="icon-btn mini danger" use:tip={"Usuń plik"} onclick={() => void removeFile(f.path)}><Icon name="close" size={13} /></button>{/if}
             </div>
           {/each}
         </div>

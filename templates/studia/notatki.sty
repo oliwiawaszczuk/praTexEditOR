@@ -13,11 +13,14 @@
   \setmainfont{JetBrains Mono}
   \setsansfont{JetBrains Mono}
   \setmonofont{JetBrains Mono}
+  % Górny pasek: mniejsza, neutralna czcionka.
+  \newfontfamily\czcionkapaska{Arial}
 \fi
+\ifPDFTeX\newcommand{\czcionkapaska}{\sffamily}\fi
 \RequirePackage[polish]{babel}
-\RequirePackage[a4paper,margin=2.2cm,headheight=16pt]{geometry}
+\RequirePackage[a4paper,margin=2.2cm,headheight=24pt]{geometry}
 \RequirePackage{amsmath,amssymb,mathtools}
-\RequirePackage{graphicx,xcolor,booktabs,fancyhdr}
+\RequirePackage{graphicx,xcolor,booktabs,fancyhdr,float}
 \RequirePackage[most]{tcolorbox}
 \RequirePackage[hidelinks,bookmarksnumbered]{hyperref}
 
@@ -55,8 +58,22 @@
 \fancyhf{}
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\headrule}{\hbox to\headwidth{\color{akcent}\leaders\hrule height \headrulewidth\hfill}}
-\fancyhead[L]{\small\color{gray}\przedmiotmale}
-\fancyhead[R]{\small\color{gray}\nouppercase{\rightmark}}
+% Pasek: lewy napis notatki (domyślnie nazwa przedmiotu) | data notatki. \notatka wstawia znaczniki;
+% \LastMark daje ostatni na stronie (z dwiema notatkami: tej, która zaczyna się później), a bez
+% znacznika — poprzedni. Starsze jądra LaTeX-a (np. wbudowany Tectonic) nie mają nowych znaczników:
+% wtedy pasek bez daty, a po lewej zawsze przedmiot.
+\ifdefined\NewMarkClass
+  \NewMarkClass{notatka}
+  \NewMarkClass{lewy}
+  \AtBeginDocument{\InsertMark{lewy}{\przedmiotmale}}
+  \newcommand{\@lewynapis}{\LastMark{lewy}}
+\else
+  \newcommand{\InsertMark}[2]{}
+  \newcommand{\LastMark}[1]{}
+  \newcommand{\@lewynapis}{\przedmiotmale}
+\fi
+\fancyhead[L]{\czcionkapaska\footnotesize\color{gray}\@lewynapis}
+\fancyhead[R]{\czcionkapaska\footnotesize\color{gray}\LastMark{notatka}}
 \fancyfoot[C]{\small\thepage}
 \fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\small\thepage}\renewcommand{\headrulewidth}{0pt}}
 
@@ -70,12 +87,70 @@
   \tableofcontents
   \clearpage}
 
-% Jedna notatka = jedna sekcja. \notatka[data]{Tytuł}
-\newcommand{\notatka}[2][]{%
-  \section{#2}%
-  \if\relax\detokenize{#1}\relax\else{\small\color{gray}#1\par}\fi}
+% Data: RRRR-MM-DD (lub DD.MM.RRRR) → „4 listopada 2026”.
+\newcommand{\@miesiac}[1]{\ifcase\numexpr#1\relax\or stycznia\or lutego\or marca\or kwietnia\or maja\or czerwca\or lipca\or sierpnia\or września\or października\or listopada\or grudnia\fi}
+\def\@dataiso#1-#2-#3\@nil{\xdef\@dataformat{\the\numexpr#3\relax\space\@miesiac{#2}\space\the\numexpr#1\relax}}
+\def\@datadmr#1.#2.#3\@nil{\xdef\@dataformat{\the\numexpr#1\relax\space\@miesiac{#2}\space\the\numexpr#3\relax}}
+\newcommand{\@ustawdate}[1]{%
+  \in@{-}{#1}\ifin@\@dataiso#1\@nil\else
+  \in@{.}{#1}\ifin@\@datadmr#1\@nil\else\gdef\@dataformat{#1}\fi\fi}
+
+% Jedna notatka = jedna sekcja. \notatka[data][lewy napis]{Tytuł}; data trafia do paska u góry
+% strony z prawej, lewy napis z lewej (pusty = nazwa przedmiotu). Data pod tytułem tylko w PDF-ie
+% całego przedmiotu: w pojedynczej notatce appka definiuje \notatkasolo.
+% \bezspisu przed \notatka = ta notatka bez spisu podrozdziałów (działa tylko na najbliższą \notatka).
+\newif\if@bezspisu
+\newcommand{\bezspisu}{\global\@bezspisutrue}
+\NewDocumentCommand{\notatka}{O{} O{} m}{%
+  \section{#3}%
+  \if\relax\detokenize{#2}\relax
+    \InsertMark{lewy}{\przedmiotmale}%
+  \else
+    \InsertMark{lewy}{#2}%
+  \fi
+  \if\relax\detokenize{#1}\relax
+    \InsertMark{notatka}{}%
+  \else
+    \@ustawdate{#1}%
+    \InsertMark{notatka}{\@dataformat}%
+    \ifdefined\notatkasolo\else{\small\color{gray}\@dataformat\par}\fi
+  \fi
+  \ifdefined\notatkasolo\@spisnotatki\fi
+  \global\@bezspisufalse}
+
+% Spis podrozdziałów pod tytułem — tylko w PDF-ie pojedynczej notatki (jedna sekcja, więc cały spis
+% treści to jej podrozdziały). Liczba wpisów z poprzedniego przebiegu (.aux): bez podrozdziałów nie
+% ma ramki. Wpisy klikalne (hyperref).
+\gdef\@ilewpisow{0}
+\newcounter{@wpisyspisu}
+\AtEndDocument{\immediate\write\@auxout{\gdef\string\@ilewpisow{\the\value{@wpisyspisu}}}}
+\def\@wpisspisu#1#2#3#4{% #1 wcięcie, #2 szerokość numeru, #3 tekst z \numberline, #4 strona
+  \par\noindent\hspace*{#1}%
+  {\def\numberline##1{\hbox to #2{\color{akcent}\bfseries##1\hfil}}#3}%
+  \nobreak\leaders\hbox{$\m@th\mkern4mu\cdot\mkern4mu$}\hfill\nobreak
+  \hbox to 1.8em{\hss\color{gray}#4}\par}
+\newcommand{\@spisnotatki}{%
+  \ifnum\if@bezspisu\z@\else\@ilewpisow\fi>\z@
+    \begin{tcolorbox}[kolorboks=akcent, title={W tej notatce}, top=7pt, after skip=14pt]
+      \small\setlength{\parskip}{3pt}%
+      \def\l@section##1##2{}%
+      \def\l@subsection##1##2{\@wpisspisu{0pt}{2.6em}{##1}{##2}}%
+      \def\l@subsubsection##1##2{{\footnotesize\color{tusz!75}\@wpisspisu{1.6em}{3.6em}{##1}{##2}}}%
+      \@starttoc{toc}%
+    \end{tcolorbox}%
+  \else
+    % Spis i tak otwarty, żeby .toc powstał już w tym przebiegu.
+    \setbox\z@\vbox{\@starttoc{toc}}%
+  \fi}
+\let\@notatki@sub\subsection
+\let\@notatki@subsub\subsubsection
+\renewcommand{\subsection}{\stepcounter{@wpisyspisu}\@notatki@sub}
+\renewcommand{\subsubsection}{\stepcounter{@wpisyspisu}\@notatki@subsub}
 
 % ── Boksy ────────────────────────────────────────────────────────────────────
+% Tło boksu: 22% koloru. Przy tak mocnym tle boks jest widoczny w podglądzie „Papier nocny”
+% (pdf.js zamienia PDF na 6 poziomów szarości wg jasności; słabsze tło, ok. 6%, zlewa się wtedy ze stroną).
+\newcommand{\tlopudelka}{22}
 \tcbset{
   notatkibox/.style={
     enhanced, breakable, boxrule=0pt, arc=2pt,
@@ -85,7 +160,7 @@
     boxed title style={empty,left=0pt,top=0pt,bottom=0pt},
   },
   kolorboks/.style={
-    notatkibox, colback=#1!6, colframe=#1,
+    notatkibox, colback={#1!\tlopudelka}, colframe=#1,
     borderline west={2.5pt}{0pt}{#1}, coltitle=#1!80!black,
   },
 }

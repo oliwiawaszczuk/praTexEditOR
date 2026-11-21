@@ -112,6 +112,10 @@ pub fn build_command(bin: &Path, main: &Path, outdir: &Path, plan: Option<&Plan>
             cmd.arg("-Z").arg(format!("search-path={}", dir.display()));
         }
     }
+    // biblatex documents make Tectonic run `biber` by name.
+    if let Some(dir) = super::latexmk::find("biber").as_deref().and_then(Path::parent) {
+        super::latexmk::prepend_path(&mut cmd, dir);
+    }
     cmd
 }
 

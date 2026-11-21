@@ -86,6 +86,10 @@ export const editorTheme = EditorView.theme(
     ".cm-pratex-hint": { marginTop: "3px", color: "var(--text-dim-2)" },
     ".cm-pratex-flash": { animation: "cm-pratex-flash 1.2s ease-out" },
     "@keyframes cm-pratex-flash": { from: { backgroundColor: "var(--accent-a30)" }, to: { backgroundColor: "transparent" } },
+    // SyncTeX target (PDF → code): one pulse, then a static mark until the next action.
+    ".cm-pratex-sync-line": { backgroundColor: "var(--sync-line-bg)" },
+    ".cm-pratex-sync-word": { backgroundColor: "var(--sync-word-bg)", outline: "1px solid var(--sync-word-border)", borderRadius: "2px", animation: "cm-pratex-sync 0.7s ease-out" },
+    "@keyframes cm-pratex-sync": { "0%": { outlineColor: "transparent", backgroundColor: "transparent" }, "30%": { outlineColor: "var(--accent)", backgroundColor: "var(--accent-a70)" }, "100%": {} },
     // Merge view (conflict → compare).
     ".cm-changedLine, .cm-insertedLine": { backgroundColor: "var(--diff-ins) !important" },
     ".cm-changedText": { background: "var(--diff-ins-strong) !important" },

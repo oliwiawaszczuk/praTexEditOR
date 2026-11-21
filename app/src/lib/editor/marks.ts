@@ -1,10 +1,11 @@
-// Compile diagnostics as editor marks (gutter + underline, message on hover) and the
-// short line flash after jumping to an error. Rust gives file + line only; the mark
+// Compile diagnostics as editor marks (gutter + underline, message on hover), the
+// short line flash after jumping to an error and the SyncTeX word mark. Rust gives file + line only; the mark
 // spans the line's text, and CodeMirror maps it through later edits.
 
 import { setDiagnostics, type Diagnostic as CmDiagnostic } from "@codemirror/lint";
 import { StateEffect, StateField, type EditorState, type TransactionSpec } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
+import { locateInSource, type WordHint } from "#lib/core/syncword.ts";
 
 /** Same shape as build.svelte.ts `Diagnostic` (kept local: no import from outside the chunk). */
 export interface BuildDiagnostic {
@@ -83,4 +84,55 @@ export function revealLine(view: EditorView, n: number): void {
   setTimeout(() => {
     if (view.dom.isConnected) view.dispatch({ effects: flashEffect.of(null) });
   }, 1200);
+}
+
+// ── SyncTeX mark ─────────────────────────────────────────────────────────────
+
+// Stays (static after one pulse) until the user moves the cursor, types or presses Esc:
+// in a long paragraph a mark that fades on its own is gone before the eye finds it.
+const syncEffect = StateEffect.define<{ line: number; from: number; to: number } | null>();
+
+const syncLine = Decoration.line({ class: "cm-pratex-sync-line" });
+const syncWord = Decoration.mark({ class: "cm-pratex-sync-word" });
+
+const syncField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    for (const e of tr.effects) {
+      if (!e.is(syncEffect)) continue;
+      const v = e.value;
+      if (!v) return Decoration.none;
+      return Decoration.set(v.to > v.from ? [syncLine.range(v.line), syncWord.range(v.from, v.to)] : [syncLine.range(v.line)]);
+    }
+    if (deco.size && (tr.docChanged || tr.selection)) return Decoration.none;
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+export const syncMark = [
+  syncField,
+  EditorView.domEventHandlers({
+    keydown(e, view) {
+      if (e.key === "Escape" && view.state.field(syncField).size) view.dispatch({ effects: syncEffect.of(null) });
+      return false;
+    },
+  }),
+];
+
+/** SyncTeX target: cursor on the word (`hint`) near line `n`, or the line's start; marked until the next action. */
+export function revealSync(view: EditorView, n: number, hint: WordHint | null): void {
+  const doc = view.state.doc;
+  const center = Math.min(Math.max(1, n), doc.lines);
+  const lines: { n: number; text: string }[] = [];
+  for (let k = Math.max(1, center - 2); k <= Math.min(doc.lines, center + 2); k++) lines.push({ n: k, text: doc.line(k).text });
+  const hit = hint ? locateInSource(lines, center, hint) : null;
+  const line = doc.line(hit?.n ?? center);
+  const lead = /^\s*/.exec(line.text)?.[0].length ?? 0;
+  const from = line.from + (hit?.from ?? lead);
+  const to = hit ? line.from + hit.to : from;
+  view.dispatch({
+    selection: { anchor: from },
+    effects: [EditorView.scrollIntoView(from, { y: "center" }), syncEffect.of({ line: line.from, from, to })],
+  });
 }

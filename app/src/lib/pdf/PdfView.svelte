@@ -3,6 +3,7 @@
   // with import(), never statically from the rest of the app.
   // `url` changes → fetch the bytes (pratex:// protocol, no IPC) → swap without flicker.
   import { onDestroy, onMount } from "svelte";
+  import type { WordHint } from "#lib/core/syncword.ts";
   import { PdfViewer, type Anchor, type Fit, type SyncRect, type Tone, type ViewerState } from "./viewer.ts";
 
   let {
@@ -212,8 +213,11 @@
   export function goTo(page: number): void {
     viewer?.goTo(page);
   }
-  export function showRects(rects: SyncRect[], opts: { flash: boolean; always: boolean }): void {
-    viewer?.showRects(rects, opts);
+  export function showSync(rects: SyncRect[], opts: { flash: boolean; always: boolean; hint?: WordHint | null }): void {
+    void viewer?.showSync(rects, opts);
+  }
+  export function pickWord(page: number, x: number, y: number, region: SyncRect[]): Promise<WordHint | null> {
+    return viewer ? viewer.pickWord(page, x, y, region) : Promise.resolve(null);
   }
   export function clip(page: number, x: number, y: number, w: number, h: number): Promise<Blob | null> {
     return viewer?.clip(page, x, y, w, h) ?? Promise.resolve(null);
@@ -281,33 +285,38 @@
     height: 100%;
     display: block;
   }
-  /* SyncTeX: pulsing accent frame where the code lands (docs/03-ux.md §3.3). */
+  /* SyncTeX: faint frame on the output lines, a strong one on the word (no word found:
+     the lines get it); one pulse, then static until the next key or click. */
   .scroller :global(.pdf-sync) {
     position: absolute;
     z-index: 2;
-    border: 2px solid var(--pdf-sync-flash);
+    border: 1px solid var(--pdf-sync-flash);
     border-radius: 3px;
-    background: var(--accent-a10);
     pointer-events: none;
-    animation: sync-pulse 1.3s ease-out forwards;
+  }
+  .scroller :global(.pdf-sync.strong),
+  .scroller :global(.pdf-sync.word) {
+    border: 2px solid var(--sync-word-border);
+    background: var(--accent-a10);
+    animation: sync-pulse 0.7s ease-out;
+  }
+  .scroller :global(.pdf-sync.word) {
+    background: var(--accent-a25);
   }
   @keyframes sync-pulse {
     0% {
       opacity: 0;
-      transform: scale(1.08);
+      transform: scale(1.15);
     }
-    15% {
+    35% {
       opacity: 1;
       transform: scale(1);
     }
-    45% {
-      opacity: 0.55;
-    }
-    70% {
-      opacity: 1;
+    60% {
+      opacity: 0.5;
     }
     100% {
-      opacity: 0;
+      opacity: 1;
     }
   }
   .page-label {

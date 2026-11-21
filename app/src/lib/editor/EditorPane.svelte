@@ -17,6 +17,7 @@
   import Crumbs from "./Crumbs.svelte";
   import InsertBar from "./InsertBar.svelte";
   import SymbolPalette from "#lib/symbols/SymbolPalette.svelte";
+  import TablePicker from "#lib/tables/TablePicker.svelte";
   import TabBar from "./TabBar.svelte";
   import { dropTarget } from "#lib/tree/dnd.svelte.ts";
 
@@ -78,6 +79,7 @@
     <InsertBar />
   {/if}
   <SymbolPalette />
+  <TablePicker />
 
   {#if d?.kind === "text"}
     <Crumbs {docs} />

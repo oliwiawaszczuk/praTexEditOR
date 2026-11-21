@@ -189,7 +189,8 @@ export class Build {
     }
     const title = await promptText(`Nowa notatka: ${subjectName(dir)}`, { label: "Temat", confirmText: "Utwórz" });
     if (!title?.trim()) return;
-    const date = new Date().toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     try {
       const path = await call<string>("studia_new_note", { pid: this.pid, subject: dir, title, date });
       showCol("mid");

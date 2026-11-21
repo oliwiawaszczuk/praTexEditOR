@@ -20,6 +20,7 @@
   import { goTo } from "#lib/core/nav.svelte.ts";
   import { addImageToBoard } from "#lib/tabs/tablica/board.svelte.ts";
   import { tip } from "#lib/ui/tooltip.svelte.ts";
+  import type { WordHint } from "#lib/core/syncword.ts";
   import type { Anchor, Fit, SyncRect, Tone, ViewerState } from "./viewer.ts";
 
   let { build }: { build: Build } = $props();
@@ -30,7 +31,8 @@
     setZoom(z: number): void;
     setFit(f: "width" | "page"): void;
     getAnchor(): Anchor | null;
-    showRects(r: SyncRect[], o: { flash: boolean; always: boolean }): void;
+    showSync(r: SyncRect[], o: { flash: boolean; always: boolean; hint?: WordHint | null }): void;
+    pickWord(page: number, x: number, y: number, region: SyncRect[]): Promise<WordHint | null>;
     clip(page: number, x: number, y: number, w: number, h: number): Promise<Blob | null>;
   }>();
   let vs = $state<ViewerState>({ page: 0, pages: 0, zoom: wsGet("pdf.zoom", 1), fit: wsGet<Fit>("pdf.fit", "width") });
@@ -114,14 +116,14 @@
     return true;
   }
 
-  async function forward(c: { path: string; line: number }, explicit: boolean): Promise<void> {
+  async function forward(c: { path: string; line: number; hint?: WordHint | null }, explicit: boolean): Promise<void> {
     try {
       const rects = await call<SyncRect[]>("synctex_forward", { pid, file: c.path, line: c.line });
       if (!rects.length) {
         if (explicit) toast("Tej linii nie ma w PDF", { icon: "target" });
         return;
       }
-      view?.showRects(rects, { flash: explicit, always: false });
+      view?.showSync(rects, { flash: explicit, always: false, hint: c.hint });
     } catch (e) {
       if (explicit) toast(e instanceof Error ? e.message : String(e), { icon: "alert", error: true });
     }
@@ -133,8 +135,11 @@
     try {
       const hit = await call<{ file: string; line: number } | null>("synctex_inverse", { pid, page: p.page, x: p.x, y: p.y });
       if (!hit) return;
+      // The clicked word and which of its repeats in that source line's output it is.
+      const region = await call<SyncRect[]>("synctex_forward", { pid, file: hit.file, line: hit.line }).catch(() => []);
+      const hint = (await view?.pickWord(p.page, p.x, p.y, region)) ?? null;
       showCol("mid");
-      await editor()?.reveal(hit.file, hit.line);
+      await editor()?.reveal(hit.file, hit.line, { hint });
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), { icon: "alert", error: true });
     }

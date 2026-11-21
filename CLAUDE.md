@@ -35,6 +35,7 @@ app/src-tauri/src/
                    tectonic (binarka obok exe), latexmk (wykrywanie TeX Live, komenda), status (rozgrzewka
                    z Condvar, selftest, cache Tectonic), build (kolejka łącząca, publikacja doc.pdf/.log/
                    .synctex.gz w cache, eksport), log (parser logu → Diagnostic + polskie podpowiedzi)
+                   biber (krok bibera Tectonika → jedna diagnostyka: brak / niezgodna wersja z biblatex 3.17 bundla)
   git/             libgit2 bez sieci (`git2`, bez `git` w systemie): repo = root projektu; mod (repos, status, log),
                    diff (changes + file_diff: from/to = HEAD|index|work|root|<commit>), ops (init, discard plik/blok,
                    restore z commita → stary plik do kosza). Celowo BEZ commit/stage w appce; repo szukane w górę drzewa
@@ -153,9 +154,12 @@ app/src/lib/
 - pdf.js: jeden wspólny `PDFWorker`; dokument zwalnia `loadingTask.destroy()` (w 6.x nie ma
   `doc.destroy`). Nowy PDF: render widocznych stron poza ekranem, potem zamiana synchronicznie.
 - SyncTeX: współrzędne zawsze w punktach PDF od lewego górnego rogu strony (strona 0-based) — tak
-  liczą Rust i `viewer.ts` (`pointAt`, `showRects`). Rekordy punktów to końce słów; pdfLaTeX znaczy
+  liczą Rust i `viewer.ts` (`pointAt`, `showSync`). Rekordy punktów to końce słów; pdfLaTeX znaczy
   wcięcie akapitu linią jego końca → słowo pod kliknięciem = pierwszy punkt na prawo.
 - ⌘+klik w edytorze = SyncTeX (`sync.toPdf`), dodatkowy kursor = ⌥+klik (`clickAddsSelectionRange`).
+- Słowo przy SyncTeX dopasowuje front (`core/syncword.ts`: tekst linii źródła ↔ warstwa tekstu pdf.js, `ordinal` =
+  które powtórzenie); Rust zostaje przy liniach. Znacznik (`revealSync` / `viewer.showSync`) zostaje do następnego
+  klawisza/kliknięcia; nasłuchy okna tylko póki znacznik jest na ekranie.
 - Nowy log do testów parsera → `tests/fixtures/logs/` (ścieżki zanonimizowane, długość linii zachowana);
   SyncTeX → `tests/fixtures/synctex/` (`$PROJECT` zamiast ścieżki projektu `projekt/`).
 

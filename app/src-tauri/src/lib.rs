@@ -170,6 +170,7 @@ pub fn run() {
             projects::templates::template_rename,
             projects::templates::template_set_main,
             projects::templates::template_create,
+            projects::templates::template_reset,
             fs::fs_list,
             fs::fs_files,
             fs::fs_write_image,

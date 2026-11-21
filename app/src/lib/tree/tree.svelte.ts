@@ -380,7 +380,7 @@ export class TreeStore {
       const to = await call<string>("fs_duplicate", { pid: this.project.id, path });
       await this.load(parentDir(path));
       this.select(to);
-      this.#flash(to);
+      this.startRename(to);
     } catch (err) {
       void showError("Nie udało się zduplikować", err);
     }

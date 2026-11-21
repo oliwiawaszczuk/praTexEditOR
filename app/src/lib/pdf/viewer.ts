@@ -12,6 +12,7 @@
 
 import { GlobalWorkerOptions, getDocument, PDFWorker, TextLayer, type PDFDocumentLoadingTask, type PDFDocumentProxy, type PDFPageProxy, type RenderTask } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { findInPieces, joinPieces, ordinalInPieces, wordAt, type Piece, type WordHint } from "#lib/core/syncword.ts";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -57,6 +58,9 @@ interface PageView {
   drawn: number;
   text: HTMLDivElement | null;
   textLayer: TextLayer | null;
+  /** Resolves when the text layer is laid out; `textScale` = the scale it was built at. */
+  ready: Promise<void> | null;
+  textScale: number;
   /** Clickable link rectangles (table of contents, \ref, \cite, URLs). */
   links: HTMLDivElement | null;
 }
@@ -237,6 +241,7 @@ export class PdfViewer {
 
   destroy(): void {
     this.#disposed = true;
+    this.clearSync();
     this.#gen++;
     this.#resize.disconnect();
     this.scroller.removeEventListener("scroll", this.#onScroll);
@@ -311,35 +316,185 @@ export class PdfViewer {
     return new Promise((res) => canvas.toBlob((b) => res(b), "image/png"));
   }
 
-  /** Bring rectangles (PDF points) into view; `flash` draws the pulsing frame. Scrolls
-   * only when the first one is outside the middle of the view (`always`: put it at 1/3). */
-  showRects(rects: SyncRect[], opts: { flash: boolean; always: boolean }): void {
+  // ── SyncTeX ────────────────────────────────────────────────────────────────
+
+  /** Bring rectangles (PDF points) into view; `flash` marks them, and with `hint` the word
+   * itself (found in the text layer), until the next key or click. Scrolls only when the
+   * target is outside the middle of the view (`always`: put it at 1/3). */
+  async showSync(rects: SyncRect[], opts: { flash: boolean; always: boolean; hint?: WordHint | null }): Promise<void> {
     if (!rects.length || !this.#sizes.length) return;
     const first = rects[0];
     if (first.page >= this.#sizes.length) return;
+    this.#bring(first, opts.always);
+    if (!opts.flash) return;
+    this.clearSync();
+    const gen = this.#gen;
+    const lines = rects.filter((x) => x.page === first.page).slice(0, 12);
+    const word = opts.hint ? await this.#findWord(lines, opts.hint) : null;
+    if (gen !== this.#gen || this.#disposed) return;
+    this.clearSync(); // a newer jump may have drawn meanwhile
+    for (const r of lines) this.#mark(r, word ? "pdf-sync" : "pdf-sync strong", 2);
+    if (word) {
+      for (const r of word) this.#mark(r, "pdf-sync word", 1.5);
+      this.#bring(word[0], false);
+    }
+    this.#armClear();
+  }
+
+  /** The word at (x, y) of `page` (PDF points) with its ordinal among equal words in
+   * `region` (the SyncTeX rectangles of its source line). */
+  async pickWord(page: number, x: number, y: number, region: SyncRect[]): Promise<WordHint | null> {
+    const div = await this.#textReady(page);
+    if (!div) return null;
+    const all = this.#pieces(page, div, null);
+    const pr = this.#views[page].div.getBoundingClientRect();
+    const s = pr.width / this.#sizes[page].w;
+    const cx = pr.left + x * s;
+    const cy = pr.top + y * s;
+    const range = document.createRange();
+    let hit: [number, number] | null = null;
+    for (let i = 0; i < all.nodes.length && !hit; i++) {
+      const node = all.nodes[i];
+      const r = (node.parentElement as Element).getBoundingClientRect();
+      if (cy < r.top || cy > r.bottom || cx < r.left - 1 || cx > r.right + 1) continue;
+      for (let k = 0; k < node.length; k++) {
+        range.setStart(node, k);
+        range.setEnd(node, k + 1);
+        const c = range.getBoundingClientRect();
+        if (cx >= c.left && cx <= c.right) {
+          hit = [i, k];
+          break;
+        }
+      }
+    }
+    if (!hit) return null;
+    const joined = joinPieces(all.pieces);
+    const idx = joined.at.findIndex(([p, o]) => p === hit[0] && o === hit[1]);
+    const w = idx < 0 ? null : wordAt(joined.text, idx);
+    if (!w) return null;
+    const [p, o] = joined.at[w.from];
+    const reg = this.#pieces(page, div, region.filter((r) => r.page === page));
+    const at = reg.nodes.indexOf(all.nodes[p]);
+    return { word: w.word, ordinal: at < 0 ? 0 : ordinalInPieces(reg.pieces, w.word, at, o) };
+  }
+
+  #marks: HTMLElement[] = [];
+  #offMarks: (() => void) | null = null;
+
+  /** Remove the SyncTeX marks (and their one-shot listeners). */
+  clearSync(): void {
+    for (const m of this.#marks) m.remove();
+    this.#marks = [];
+    this.#offMarks?.();
+    this.#offMarks = null;
+  }
+
+  // Listeners only while a mark is on screen: the next real key or click removes it.
+  #armClear(): void {
+    if (this.#offMarks) return;
+    const key = (e: KeyboardEvent) => {
+      if (!["Meta", "Control", "Shift", "Alt"].includes(e.key)) this.clearSync();
+    };
+    const ptr = () => this.clearSync();
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("pointerdown", ptr, true);
+    this.#offMarks = () => {
+      window.removeEventListener("keydown", key, true);
+      window.removeEventListener("pointerdown", ptr, true);
+    };
+  }
+
+  #bring(r: SyncRect, always: boolean): void {
     const s = this.#scale;
-    const top = this.#tops[first.page] + first.y * s;
-    const bottom = top + Math.max(first.h * s, 12);
+    const top = this.#tops[r.page] + r.y * s;
+    const bottom = top + Math.max(r.h * s, 12);
     const view = this.scroller;
     const margin = view.clientHeight * 0.2;
-    if (opts.always || top < view.scrollTop + margin || bottom > view.scrollTop + view.clientHeight - margin) {
+    if (always || top < view.scrollTop + margin || bottom > view.scrollTop + view.clientHeight - margin) {
       view.scrollTop = top - view.clientHeight / 3;
     }
-    const left = parseFloat(this.#views[first.page].div.style.left) + first.x * s;
-    if (left < view.scrollLeft || left + first.w * s > view.scrollLeft + view.clientWidth) view.scrollLeft = left - 20;
-    if (!opts.flash) return;
-    for (const r of rects.filter((x) => x.page === first.page).slice(0, 12)) {
-      const page = this.#sizes[r.page];
-      const box = document.createElement("div");
-      box.className = "pdf-sync";
-      const pad = 2;
-      box.style.left = `${((r.x - pad) / page.w) * 100}%`;
-      box.style.top = `${((r.y - pad) / page.h) * 100}%`;
-      box.style.width = `${((r.w + 2 * pad) / page.w) * 100}%`;
-      box.style.height = `${((r.h + 2 * pad) / page.h) * 100}%`;
-      this.#views[r.page].div.appendChild(box);
-      setTimeout(() => box.remove(), 1300);
+    const left = parseFloat(this.#views[r.page].div.style.left) + r.x * s;
+    if (left < view.scrollLeft || left + r.w * s > view.scrollLeft + view.clientWidth) view.scrollLeft = left - 20;
+  }
+
+  /** A box over `r` in percent of its page (follows zoom without redraw). */
+  #mark(r: SyncRect, cls: string, pad: number): void {
+    const page = this.#sizes[r.page];
+    const box = document.createElement("div");
+    box.className = cls;
+    box.style.left = `${((r.x - pad) / page.w) * 100}%`;
+    box.style.top = `${((r.y - pad) / page.h) * 100}%`;
+    box.style.width = `${((r.w + 2 * pad) / page.w) * 100}%`;
+    box.style.height = `${((r.h + 2 * pad) / page.h) * 100}%`;
+    this.#views[r.page].div.appendChild(box);
+    this.#marks.push(box);
+  }
+
+  /** The text layer of page `i`, built now if needed (it may be pending or off-screen). */
+  async #textReady(i: number): Promise<HTMLDivElement | null> {
+    for (let tries = 0; tries < 2; tries++) {
+      this.#ensureText(i);
+      const v = this.#views[i];
+      const div = v?.text;
+      if (!v || !div) return null;
+      await v.ready;
+      if (v.text === div) return div; // else released meanwhile (zoom): build again
     }
+    return null;
+  }
+
+  /** Text nodes of a text layer (only those on `region`, if given) as matching pieces. */
+  #pieces(page: number, div: HTMLDivElement, region: SyncRect[] | null): { pieces: Piece[]; nodes: Text[] } {
+    const pieces: Piece[] = [];
+    const nodes: Text[] = [];
+    const pr = this.#views[page].div.getBoundingClientRect();
+    const s = pr.width / this.#sizes[page].w;
+    const inside = (el: Element): boolean => {
+      if (!region) return true;
+      const r = el.getBoundingClientRect();
+      const x = (r.left - pr.left) / s;
+      const w = r.width / s;
+      const cy = (r.top - pr.top + r.height / 2) / s;
+      return region.some((q) => cy >= q.y - 1 && cy <= q.y + q.h + 1 && x + w >= q.x - 1 && x <= q.x + q.w + 1);
+    };
+    const walk = document.createTreeWalker(div, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    let skipped = false;
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      const last = pieces[pieces.length - 1];
+      if (n.nodeType === Node.ELEMENT_NODE) {
+        if ((n as Element).tagName === "BR" && last && !skipped) last.end = "eol";
+        continue;
+      }
+      const t = n as Text;
+      if (!t.data || !t.parentElement || !inside(t.parentElement)) {
+        if (last && !last.end) last.end = "gap";
+        skipped = true;
+        continue;
+      }
+      skipped = false;
+      pieces.push({ text: t.data, end: "" });
+      nodes.push(t);
+    }
+    return { pieces, nodes };
+  }
+
+  /** Client rectangles of the `hint` word inside the SyncTeX line boxes, in PDF points. */
+  async #findWord(lines: SyncRect[], hint: WordHint): Promise<SyncRect[] | null> {
+    const page = lines[0].page;
+    const div = await this.#textReady(page);
+    if (!div) return null;
+    const { pieces, nodes } = this.#pieces(page, div, lines);
+    const hit = findInPieces(pieces, hint.word, hint.ordinal);
+    if (!hit) return null;
+    const range = document.createRange();
+    range.setStart(nodes[hit.from[0]], hit.from[1]);
+    range.setEnd(nodes[hit.to[0]], hit.to[1]);
+    const pr = this.#views[page].div.getBoundingClientRect();
+    const s = pr.width / this.#sizes[page].w;
+    const out = [...range.getClientRects()]
+      .filter((r) => r.width > 0.5 && r.height > 0.5)
+      .map((r) => ({ page, x: (r.left - pr.left) / s, y: (r.top - pr.top) / s, w: r.width / s, h: r.height / s }));
+    return out.length ? out : null;
   }
 
   // ── Zoom ───────────────────────────────────────────────────────────────────
@@ -425,6 +580,7 @@ export class PdfViewer {
 
   /** One page box per page; extra boxes removed. */
   #syncViews(): void {
+    this.clearSync();
     while (this.#views.length > this.#sizes.length) {
       const v = this.#views.pop() as PageView;
       this.#releaseText(v);
@@ -439,7 +595,7 @@ export class PdfViewer {
       div.className = "pdf-page";
       div.dataset.page = String(this.#views.length + 1);
       this.#content.appendChild(div);
-      this.#views.push({ div, canvas: null, drawn: 0, text: null, textLayer: null, links: null });
+      this.#views.push({ div, canvas: null, drawn: 0, text: null, textLayer: null, ready: null, textScale: 0, links: null });
     }
   }
 
@@ -486,6 +642,7 @@ export class PdfViewer {
     v.links = null;
     v.textLayer?.cancel();
     v.textLayer = null;
+    v.ready = null;
     v.text?.remove();
     v.text = null;
   }
@@ -532,7 +689,8 @@ export class PdfViewer {
         if (gen !== this.#gen || !this.#doc) return;
         if (c && scale === this.#scale) {
           this.#putCanvas(next, c, scale);
-          this.#releaseText(this.#views[next]); // rebuilt at the new scale below
+          // Rebuilt at the new scale below; one built ahead for SyncTeX at this scale stays.
+          if (this.#views[next].textScale !== scale) this.#releaseText(this.#views[next]);
         }
         else if (c) shrink(c);
         else this.#views[next].drawn = this.#scale; // failed page: do not retry forever
@@ -555,7 +713,8 @@ export class PdfViewer {
       viewport: this.#pageProxies[i].getViewport({ scale: this.#scale }),
     });
     v.textLayer = tl;
-    tl.render().catch(() => {});
+    v.textScale = this.#scale;
+    v.ready = tl.render().catch(() => {});
     void this.#ensureLinks(i, v);
   }
 

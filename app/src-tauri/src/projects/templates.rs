@@ -94,8 +94,10 @@ pub struct TemplateInfo {
     name: String,
     icon: String,
     files: Vec<String>,
-    /// The user's own (can be edited and deleted).
+    /// The user's own (can be deleted).
     custom: bool,
+    /// A built-in the user has edited (a copy on disk wins over the embedded one; can be reset).
+    modified: bool,
     /// Main file, relative to the template.
     main: String,
 }
@@ -119,6 +121,35 @@ fn user_dir(paths: &Paths) -> PathBuf {
 fn user_template(paths: &Paths, id: &str) -> Option<PathBuf> {
     let hex = id.strip_prefix(USER_PREFIX)?;
     (!hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit())).then(|| user_dir(paths).join(hex))
+}
+
+/// Where the edited copy of a built-in lives (`template.json` + `files/`); exists after the first edit.
+fn override_root(paths: &Paths, id: &str) -> Option<PathBuf> {
+    find(id).map(|_| paths.data.join("template-overrides").join(id))
+}
+
+/// Folder holding the files of `id` on disk: a user template, or a built-in the user edited.
+pub fn disk_dir(paths: &Paths, id: &str) -> Option<PathBuf> {
+    if find(id).is_some() {
+        override_root(paths, id).filter(|d| d.join("template.json").is_file())
+    } else {
+        user_template(paths, id).filter(|d| d.is_dir())
+    }
+}
+
+/// The editable copy of a built-in, made on the first edit from the embedded files.
+fn builtin_dir(paths: &Paths, id: &str) -> CmdResult<PathBuf> {
+    let t = find(id).ok_or("Nie ma takiego szablonu")?;
+    let dir = override_root(paths, id).ok_or("Nie ma takiego szablonu")?;
+    if dir.join("template.json").is_file() {
+        return Ok(dir);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    let files = dir.join("files");
+    std::fs::create_dir_all(&files).map_err(err)?;
+    write(t, &files).map_err(err)?;
+    write_json(&dir.join("template.json"), &Meta { name: t.name.into(), main: "main.tex".into() }).map_err(err)?;
+    Ok(dir)
 }
 
 /// Relative file paths under `dir` (no ignored folders, TeX by-products or symlinks).
@@ -180,13 +211,17 @@ fn walk_dirs(dir: &Path, only_empty: bool) -> Vec<PathBuf> {
 pub fn templates_list(paths: State<'_, Paths>) -> Vec<TemplateInfo> {
     let mut out: Vec<TemplateInfo> = TEMPLATES
         .iter()
-        .map(|t| TemplateInfo {
-            id: t.id.into(),
-            name: t.name.into(),
-            icon: t.icon.into(),
-            files: t.files.iter().map(|f| f.0.to_string()).filter(|p| !p.ends_with('/')).collect(),
-            custom: false,
-            main: "main.tex".into(),
+        .map(|t| {
+            let edited = disk_dir(&paths, t.id);
+            let (files, main) = match &edited {
+                Some(d) => {
+                    let meta: Meta = read_json(&d.join("template.json"));
+                    let files = walk(&d.join("files")).iter().map(|p| p.to_string_lossy().into_owned()).collect();
+                    (files, if meta.main.is_empty() { "main.tex".to_string() } else { meta.main })
+                }
+                None => (t.files.iter().map(|f| f.0.to_string()).filter(|p| !p.ends_with('/')).collect(), "main.tex".to_string()),
+            };
+            TemplateInfo { id: t.id.into(), name: t.name.into(), icon: t.icon.into(), files, custom: false, modified: edited.is_some(), main }
         })
         .collect();
     let mut own = Vec::new();
@@ -199,7 +234,7 @@ pub fn templates_list(paths: State<'_, Paths>) -> Vec<TemplateInfo> {
             }
             let files = walk(&e.path().join("files")).iter().map(|p| p.to_string_lossy().into_owned()).take(12).collect();
             let main = if meta.main.is_empty() { "main.tex".into() } else { meta.main };
-            own.push((meta.name.to_lowercase(), TemplateInfo { id: format!("{USER_PREFIX}{hex}"), name: meta.name, icon: "folder".into(), files, custom: true, main }));
+            own.push((meta.name.to_lowercase(), TemplateInfo { id: format!("{USER_PREFIX}{hex}"), name: meta.name, icon: "folder".into(), files, custom: true, modified: false, main }));
         }
     }
     own.sort_by(|a, b| a.0.cmp(&b.0));
@@ -219,8 +254,12 @@ fn clean_rel(rel: &str) -> CmdResult<PathBuf> {
     Ok(p)
 }
 
+/// Folder to edit: the user's template, or the (first made) copy of a built-in.
 fn custom_dir(paths: &Paths, id: &str) -> CmdResult<PathBuf> {
-    user_template(paths, id).filter(|d| d.is_dir()).ok_or_else(|| "Nie ma takiego szablonu (wbudowanych nie da się zmieniać)".to_string())
+    if find(id).is_some() {
+        return builtin_dir(paths, id);
+    }
+    user_template(paths, id).filter(|d| d.is_dir()).ok_or_else(|| "Nie ma takiego szablonu".to_string())
 }
 
 #[derive(Serialize)]
@@ -232,7 +271,7 @@ pub struct TemplateFile {
 
 #[tauri::command]
 pub fn template_files(paths: State<'_, Paths>, id: String) -> CmdResult<Vec<TemplateFile>> {
-    if let Some(t) = find(&id) {
+    if let Some(t) = find(&id).filter(|_| disk_dir(&paths, &id).is_none()) {
         return Ok(t
             .files
             .iter()
@@ -242,7 +281,7 @@ pub fn template_files(paths: State<'_, Paths>, id: String) -> CmdResult<Vec<Temp
             })
             .collect());
     }
-    let files = custom_dir(&paths, &id)?.join("files");
+    let files = disk_dir(&paths, &id).ok_or("Nie ma takiego szablonu")?.join("files");
     let mut out: Vec<TemplateFile> = walk_dirs(&files, false).into_iter().map(|p| TemplateFile { path: p.to_string_lossy().into_owned(), size: 0, dir: true }).collect();
     out.extend(walk(&files).into_iter().map(|p| TemplateFile { size: std::fs::metadata(files.join(&p)).map(|m| m.len()).unwrap_or(0), path: p.to_string_lossy().into_owned(), dir: false }));
     out.sort_by(|a, b| a.path.cmp(&b.path));
@@ -252,11 +291,11 @@ pub fn template_files(paths: State<'_, Paths>, id: String) -> CmdResult<Vec<Temp
 /// Text of one template file (built-ins with the shared preamble already in place).
 #[tauri::command]
 pub fn template_read(paths: State<'_, Paths>, id: String, path: String) -> CmdResult<String> {
-    if let Some(t) = find(&id) {
+    if let Some(t) = find(&id).filter(|_| disk_dir(&paths, &id).is_none()) {
         let (_, c) = t.files.iter().find(|f| f.0 == path).ok_or("Nie ma takiego pliku")?;
         return Ok(c.replace("%%PREAMBLE%%", PREAMBLE.trim_end()));
     }
-    let f = custom_dir(&paths, &id)?.join("files").join(clean_rel(&path)?);
+    let f = disk_dir(&paths, &id).ok_or("Nie ma takiego szablonu")?.join("files").join(clean_rel(&path)?);
     let bytes = std::fs::read(&f).map_err(|_| "Nie ma takiego pliku".to_string())?;
     String::from_utf8(bytes).map_err(|_| "To nie jest plik tekstowy (UTF-8)".to_string())
 }
@@ -288,6 +327,9 @@ pub fn template_add_dir(paths: State<'_, Paths>, id: String, path: String) -> Cm
 
 #[tauri::command]
 pub fn template_rename(paths: State<'_, Paths>, id: String, name: String) -> CmdResult<()> {
+    if find(&id).is_some() {
+        return Err("Nazwy wbudowanego szablonu nie zmienisz — zrób kopię".into());
+    }
     let dir = custom_dir(&paths, &id)?;
     let name = guard::valid_name(&name)?.to_string();
     let mut meta: Meta = read_json(&dir.join("template.json"));
@@ -317,11 +359,12 @@ pub fn template_create(paths: State<'_, Paths>, name: String, from: Option<Strin
     let files = dir.join("files");
     std::fs::create_dir_all(&files).map_err(err)?;
     let res: CmdResult<String> = (|| {
-        if let Some(t) = find(&from) {
-            write(t, &files).map_err(err)?;
-            Ok("main.tex".to_string())
-        } else {
-            write_user(&paths, &from, &files)
+        match (find(&from), disk_dir(&paths, &from)) {
+            (Some(t), None) => {
+                write(t, &files).map_err(err)?;
+                Ok("main.tex".to_string())
+            }
+            _ => write_user(&paths, &from, &files),
         }
     })();
     match res {
@@ -385,7 +428,7 @@ pub fn template_save(reg: State<'_, Projects>, paths: State<'_, Paths>, pid: Str
 
 #[tauri::command]
 pub fn template_delete(paths: State<'_, Paths>, id: String) -> CmdResult<()> {
-    let dir = user_template(&paths, &id).ok_or("Nie ma takiego szablonu")?;
+    let dir = user_template(&paths, &id).ok_or("Wbudowanego szablonu nie da się usunąć — „Przywróć domyślny” cofa zmiany")?;
     if dir.is_dir() {
         std::fs::remove_dir_all(dir).map_err(err)?;
     }
@@ -394,7 +437,7 @@ pub fn template_delete(paths: State<'_, Paths>, id: String) -> CmdResult<()> {
 
 /// Copy a user template into an existing, empty folder; returns its main file (relative).
 pub fn write_user(paths: &Paths, id: &str, dir: &Path) -> CmdResult<String> {
-    let src = user_template(paths, id).ok_or("Nie ma takiego szablonu")?;
+    let src = disk_dir(paths, id).ok_or("Nie ma takiego szablonu")?;
     let meta: Meta = read_json(&src.join("template.json"));
     let files = src.join("files");
     for d in walk_dirs(&files, true) {
@@ -408,6 +451,16 @@ pub fn write_user(paths: &Paths, id: &str, dir: &Path) -> CmdResult<String> {
         std::fs::copy(files.join(&rel), to).map_err(err)?;
     }
     Ok(if meta.main.is_empty() { "main.tex".into() } else { meta.main })
+}
+
+/// "Przywróć domyślny": drop the edited copy of a built-in.
+#[tauri::command]
+pub fn template_reset(paths: State<'_, Paths>, id: String) -> CmdResult<()> {
+    let dir = override_root(&paths, &id).ok_or("To nie jest wbudowany szablon")?;
+    match std::fs::remove_dir_all(dir) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(err(e)),
+        _ => Ok(()),
+    }
 }
 
 pub fn find(id: &str) -> Option<&'static Template> {
@@ -464,6 +517,27 @@ mod tests {
         let out = tempfile::tempdir().unwrap();
         write_user(&paths, "u-abc1", out.path()).unwrap();
         assert!(out.path().join("img").is_dir());
+    }
+
+    #[test]
+    fn editing_a_builtin_makes_a_copy_that_new_projects_use() {
+        let data = tempfile::tempdir().unwrap();
+        let paths = Paths::at(data.path().to_path_buf(), data.path().join("cache")).unwrap();
+        assert!(disk_dir(&paths, "raport").is_none());
+        let dir = custom_dir(&paths, "raport").unwrap();
+        let main = dir.join("files/main.tex");
+        assert!(std::fs::read_to_string(&main).unwrap().contains("\\usepackage[polish]{babel}"));
+        std::fs::write(&main, "\\documentclass{article}\\begin{document}Moje\\end{document}").unwrap();
+        assert!(disk_dir(&paths, "raport").is_some());
+        let out = tempfile::tempdir().unwrap();
+        assert_eq!(write_user(&paths, "raport", out.path()).unwrap(), "main.tex");
+        assert!(std::fs::read_to_string(out.path().join("main.tex")).unwrap().contains("Moje"));
+        // The original files stay in the copy too.
+        assert!(out.path().join("bibliografia.bib").is_file());
+        // Another built-in is untouched, a custom one cannot be mistaken for it.
+        assert!(disk_dir(&paths, "pusty").is_none());
+        std::fs::remove_dir_all(override_root(&paths, "raport").unwrap()).unwrap();
+        assert!(disk_dir(&paths, "raport").is_none());
     }
 
     #[test]

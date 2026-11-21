@@ -30,7 +30,7 @@ import { fileLinkAt, fileLinks, macroAt, openFileLink, openMacroDefinition, open
 import { completion } from "./complete.ts";
 import { imageHover } from "./hover.ts";
 import { formulaPreview } from "./formula.ts";
-import { flashField } from "./marks.ts";
+import { flashField, syncMark } from "./marks.ts";
 import { prefs, type Prefs } from "./prefs.ts";
 import { insertEnd, insertItem, latexFolding } from "./structure.ts";
 import { editorHighlight, editorTheme, fontSizeTheme, svgIcon } from "./theme.ts";
@@ -148,6 +148,7 @@ export function extensions(lang: LangId, hooks: Hooks): Extension[] {
     lintGutter({ hoverTime: 150 }),
     foldMarkers,
     flashField,
+    syncMark,
     highlightSpecialChars(),
     history(),
     drawSelection(),

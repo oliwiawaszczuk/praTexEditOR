@@ -35,6 +35,11 @@
       <span class="k">Kod → PDF</span>
       <span class="hint">{isMac() ? "⌘" : "Ctrl"}+klik w edytorze · {formatKeys(keysOf("sync.toPdf") ?? "mod+j")} · ikona celownika; dodatkowy kursor: {isMac() ? "⌥" : "Alt"}+klik</span>
     </div>
+    <div class="row">
+      <Icon name="target" size={16} />
+      <span class="k">Znacznik</span>
+      <span class="hint">Słowo z drugiej strony zostaje podświetlone do następnego klawisza lub kliknięcia (Esc)</span>
+    </div>
   </div>
 </div>
 

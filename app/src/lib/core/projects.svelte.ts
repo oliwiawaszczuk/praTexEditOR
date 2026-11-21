@@ -29,6 +29,8 @@ export interface MainCandidate {
 export interface TemplateInfo {
   /** The user's own template (can be deleted). */
   custom: boolean;
+  /** A built-in the user has edited (can be reset to the original). */
+  modified: boolean;
   /** Main file, relative to the template. */
   main: string;
   id: string;

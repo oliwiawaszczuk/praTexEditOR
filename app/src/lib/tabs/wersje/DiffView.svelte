@@ -18,6 +18,8 @@
 
   let box = $state<HTMLDivElement>();
   let top = $state(0);
+  // Split view: selection sticks to the column it started in (otherwise copy interleaves before/after).
+  let selSide = $state<"l" | "r">("l");
   let height = $state(600);
 
   const d = $derived(git.diff);
@@ -142,7 +144,17 @@
     {:else if !d.hunks.length}
       <div class="note"><Icon name="info" size={28} /><span>Treść bez zmian (zmieniły się tylko uprawnienia lub typ pliku).</span></div>
     {:else}
-      <div class="scroll" bind:this={box} onscroll={() => (top = box!.scrollTop)}>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="scroll"
+        class:sel-r={selSide === "r"}
+        bind:this={box}
+        onscroll={() => (top = box!.scrollTop)}
+        onpointerdown={(e) => {
+          const h = (e.target as HTMLElement).closest(".half");
+          if (h) selSide = h.previousElementSibling ? "r" : "l";
+        }}
+      >
         <div class="spacer-box" class:isSplit style:height="{rows.length * ROW}px" style:--len="{maxLen}ch">
           {#each visible as r, k (first + k)}
             <div class="r" style:top="{(first + k) * ROW}px">
@@ -399,6 +411,13 @@
     flex: 1;
     padding-right: 24px;
     color: var(--text);
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .scroll:not(.sel-r) .half + .half .c,
+  .scroll.sel-r .half:first-child .c {
+    -webkit-user-select: none;
+    user-select: none;
   }
   mark {
     background: var(--diff-ins-strong);

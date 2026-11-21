@@ -20,6 +20,8 @@ pub const STYLE_FILE: &str = "notatki.sty";
 const MARKER: &str = "%% NOTATKI";
 /// Dropped from the wrapper of a single note (cover page + table of contents).
 const COVER: &str = "\\okladka";
+/// First line of a new note: the per-note switch for the subsection list, off by default.
+const NO_TOC_HINT: &str = "% \\bezspisu  % odkomentuj: PDF tej notatki bez spisu podrozdziałów";
 
 pub const BLANK_MAIN: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../templates/studia/blank-przedmiot/main.tex"));
 
@@ -107,7 +109,8 @@ fn names_def(folder: &str) -> String {
 }
 
 /// `main.tex` with the `%% NOTATKI` line replaced by one line of `\input`s. Line numbers stay
-/// the same, so an error in `main.tex` points at the right line. `single`: no cover page.
+/// the same, so an error in `main.tex` points at the right line. `single`: no cover page and
+/// `\notatkasolo` defined (the style then skips the date under the note title).
 ///
 /// The subject name comes from the folder (`inzynieria-wiedzy` → "INZYNIERIA WIEDZY" on the
 /// cover, "Inzynieria Wiedzy" in the page header): it is defined on the `\usepackage{notatki}`
@@ -121,7 +124,8 @@ pub fn compose(main: &str, name: &str, inputs: &[String], single: bool) -> Resul
             found = true;
             out.push(inputs.iter().map(|i| input_cmd(i)).collect::<Result<Vec<_>, _>>()?.join(""));
         } else if t.starts_with("\\usepackage{notatki}") {
-            out.push(format!("{}{line}", names_def(name)));
+            let solo = if single { "\\gdef\\notatkasolo{}" } else { "" };
+            out.push(format!("{}{solo}{line}", names_def(name)));
         } else if single && t.starts_with(COVER) {
             out.push("%".to_string());
         } else {
@@ -259,7 +263,7 @@ pub fn studia_new_note(reg: State<'_, Projects>, pid: String, subject: PathBuf, 
     }
     let date = date.trim();
     let head = if date.is_empty() { format!("\\notatka{{{}}}", tex_escape(&title)) } else { format!("\\notatka[{}]{{{}}}", tex_escape(date), tex_escape(&title)) };
-    write_atomic(&file, format!("{head}\n\n").as_bytes()).map_err(err)?;
+    write_atomic(&file, format!("{NO_TOC_HINT}\n{head}\n\n").as_bytes()).map_err(err)?;
     Ok(file)
 }
 
@@ -288,11 +292,12 @@ mod tests {
     fn compose_replaces_marker_and_keeps_line_numbers() {
         let all = compose(MAIN, "inzynieria-wiedzy", &["content/01_a.tex".into(), "content/02_b c.tex".into()], false).unwrap();
         assert_eq!(all.lines().count(), MAIN.lines().count());
-        assert!(all.contains("\\okladka"));
+        assert!(all.contains("\\okladka") && !all.contains("notatkasolo"));
         assert!(all.contains("\\gdef\\przedmiotduze{INZYNIERIA WIEDZY}\\gdef\\przedmiotmale{Inzynieria Wiedzy}\\usepackage{notatki}"), "{all}");
         assert!(all.contains("\\input{content/01_a.tex}\\input{\"content/02_b c.tex\"}"));
         let one = compose(MAIN, "x", &["content/01_a.tex".into()], true).unwrap();
         assert!(!one.contains("\\okladka"));
+        assert!(one.contains("\\gdef\\notatkasolo{}\\usepackage{notatki}"), "{one}");
         assert_eq!(one.lines().count(), MAIN.lines().count());
     }
 

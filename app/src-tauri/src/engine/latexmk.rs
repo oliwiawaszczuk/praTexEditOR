@@ -53,7 +53,7 @@ fn search_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-fn find(name: &str) -> Option<PathBuf> {
+pub fn find(name: &str) -> Option<PathBuf> {
     let file = format!("{name}{}", std::env::consts::EXE_SUFFIX);
     search_dirs().into_iter().map(|d| d.join(&file)).find(|p| p.is_file())
 }
@@ -133,15 +133,20 @@ pub fn command(bin: &Path, flag: &str, main: &Path, outdir: &Path, plan: Option<
     place(&mut cmd, main, plan);
     // latexmk calls pdflatex/bibtex by name: put the TeX bin folder first on PATH.
     if let Some(texbin) = bin.parent() {
-        let mut paths = vec![texbin.to_path_buf()];
-        if let Some(p) = std::env::var_os("PATH") {
-            paths.extend(std::env::split_paths(&p));
-        }
-        if let Ok(joined) = std::env::join_paths(paths) {
-            cmd.env("PATH", joined);
-        }
+        prepend_path(&mut cmd, texbin);
     }
     cmd
+}
+
+/// `dir` first on the child's PATH (apps started from Finder lack the TeX folders).
+pub fn prepend_path(cmd: &mut Command, dir: &Path) {
+    let mut paths = vec![dir.to_path_buf()];
+    if let Some(p) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&p));
+    }
+    if let Ok(joined) = std::env::join_paths(paths) {
+        cmd.env("PATH", joined);
+    }
 }
 
 /// One bare pass of the engine itself (no latexmk, no bibliography, no reruns) into the
@@ -153,13 +158,7 @@ pub fn command_live(engine: &Path, main: &Path, outdir: &Path, plan: Option<&Pla
         .arg(format!("-output-directory={}", outdir.display()));
     place(&mut cmd, main, plan);
     if let Some(texbin) = engine.parent() {
-        let mut paths = vec![texbin.to_path_buf()];
-        if let Some(p) = std::env::var_os("PATH") {
-            paths.extend(std::env::split_paths(&p));
-        }
-        if let Ok(joined) = std::env::join_paths(paths) {
-            cmd.env("PATH", joined);
-        }
+        prepend_path(&mut cmd, texbin);
     }
     cmd
 }

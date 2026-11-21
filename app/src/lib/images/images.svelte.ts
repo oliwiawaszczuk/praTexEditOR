@@ -6,8 +6,10 @@
 
 import { getSetting, setSetting } from "#lib/core/appSettings.svelte.ts";
 import { baseName, currentProject, parentDir, wsGet, wsSet } from "#lib/core/projects.svelte.ts";
+import { activeBuild } from "#lib/build/build.svelte.ts";
 import { call, callRaw } from "#lib/core/tauri.ts";
 import { editor } from "#lib/editor/bridge.svelte.ts";
+import { subjectOf } from "#lib/studia/target.ts";
 import { showCol } from "#lib/tabs/projekt/layout.svelte.ts";
 import { toast } from "#lib/ui/toast.svelte.ts";
 
@@ -43,8 +45,15 @@ export function relPath(from: string, to: string): string {
 /** VS Code snippet syntax: `$ } \` in a path are literal. */
 const lit = (s: string) => s.replace(/[\\$}]/g, (c) => `\\${c}`);
 
-export function imageCode(rel: string, mode: ImageMode, label: string): string {
+/** Template "Studia": `figure[H]` (package float, in notatki.sty) with the caption centered and
+ * tab stops on the width, the caption and the label. */
+export function studiaFigure(rel: string, label: string): string {
+  return `\\begin{figure}[H]\n    \\centering\n    \\includegraphics[width=\${1:0.8}\\textwidth, clip]{${lit(rel)}}\n    \\caption{\\centering \${2}}\n    \\label{fig:\${3:${lit(label)}}}\n\\end{figure}$0`;
+}
+
+export function imageCode(rel: string, mode: ImageMode, label: string, studia = false): string {
   const p = lit(rel);
+  if (studia && mode === "figure") return studiaFigure(rel, label);
   if (mode === "plain") return `\\includegraphics[width=\${1:0.8}\\textwidth]{${p}}$0`;
   return `\\begin{figure}[htbp]\n\t\\centering\n\t\\includegraphics[width=0.8\\textwidth]{${p}}\n\t\\caption{\${1}}\n\t\\label{fig:${lit(label)}}\n\\end{figure}\n$0`;
 }
@@ -63,7 +72,17 @@ export function slug(name: string): string {
   );
 }
 
+/** Studia: the subject folder of the open file (images and `\input` paths start there). */
+function studiaSubject(): string | null {
+  const b = activeBuild();
+  const st = b?.studia;
+  if (!b || !st) return null;
+  return subjectOf(st.root, b.focus) ?? wsGet<string | null>("studia.last", null);
+}
+
 function mainDir(): string | null {
+  const s = studiaSubject();
+  if (s) return s;
   const p = currentProject();
   return p?.main ? parentDir(p.main) : (p?.roots[0] ?? null);
 }
@@ -83,6 +102,9 @@ async function folders(): Promise<string[]> {
  * main file, else `<main dir>/img` (created on first write). */
 async function imgDir(dirs: string[]): Promise<string> {
   const saved = wsGet<string | null>("img.dir", null);
+  const subject = studiaSubject();
+  // Studia: every subject has its own images/ (a remembered folder of another subject does not count).
+  if (subject) return saved && (saved === subject || saved.startsWith(subject + "/") || saved.startsWith(subject + "\\")) ? saved : `${subject}/images`;
   if (saved) return saved;
   const base = mainDir() ?? "";
   for (const n of ["img", "images", "figures", "fig", "obrazy", "rysunki", "grafika"]) {
@@ -102,7 +124,7 @@ function insert(path: string, mode: ImageMode, at?: { x: number; y: number }): b
   const base = mainDir();
   if (!base) return false;
   showCol("mid");
-  return editor()?.insertAt(imageCode(relPath(base, path), mode, slug(baseName(path))), at) ?? false;
+  return editor()?.insertAt(imageCode(relPath(base, path), mode, slug(baseName(path)), !!studiaSubject()), at) ?? false;
 }
 
 /** ⌘V with an image in the clipboard. */

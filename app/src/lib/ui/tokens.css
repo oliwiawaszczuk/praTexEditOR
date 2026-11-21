@@ -72,6 +72,9 @@
   --pdf-bg: var(--bg-deepest);
   --pdf-page-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
   --pdf-sync-flash: var(--accent-a40);
+  --sync-word-bg: var(--accent-a40);
+  --sync-word-border: var(--accent-a90);
+  --sync-line-bg: var(--accent-a10);
   --pdf-page: #fff;
   --pdf-skeleton: #ececec;
   --pdf-skeleton-shine: #f8f8f8;

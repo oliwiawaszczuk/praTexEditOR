@@ -21,6 +21,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use super::biber;
 use super::latexmk;
 use super::log::{self, Diagnostic, Resolver};
 use super::process::{run_killable, Killer, Procs};
@@ -295,6 +296,7 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
     let mut engine_errors: Vec<String> = Vec::new();
     let mut tail: Vec<String> = Vec::new();
     let mut downloads = 0u32;
+    let mut biber = biber::Watch::default();
     let mut last_emit = Instant::now() - Duration::from_secs(1);
     let status = run_killable(app.state::<Procs>().inner(), Some(killer), cmd, |line| {
         if let Some(name) = tectonic::downloading(line) {
@@ -306,6 +308,7 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
         } else if line.starts_with("error: ") {
             engine_errors.push(line.to_string());
         }
+        biber.line(line);
         if tail.len() == 20 {
             tail.remove(0);
         }
@@ -356,7 +359,13 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
         }
     }
 
-    let diagnostics = diagnostics_of(&build.join("doc.log"), &project, &base, &engine_errors);
+    let mut diagnostics = diagnostics_of(&build.join("doc.log"), &project, &base, &engine_errors);
+    let user_main = plan.is_none().then_some(main.as_path());
+    if let Some(d) = biber.diagnostic(user_main, latexmk::detect(false).latexmk.is_some()) {
+        // Replaces Tectonic's own "external tool exited" lines.
+        diagnostics.retain(|x| x.file.is_some() || !(x.message.starts_with("the external tool") || x.message.contains("(os error 2)")));
+        diagnostics.insert(0, d);
+    }
     let errors = log::counts(&diagnostics).0;
     let mut message = None;
     if !fresh && errors == 0 {

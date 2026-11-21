@@ -99,7 +99,7 @@ pub fn project_from_template(
     let name = guard::valid_name(&name)?.to_string();
     let parent = canonical_dir(&parent)?;
     let dir = crate::fs::ops::unique_path(&parent, &name);
-    let main_rel = if let Some(t) = templates::find(&template) {
+    let main_rel = if let Some(t) = templates::find(&template).filter(|_| templates::disk_dir(&paths, &template).is_none()) {
         std::fs::create_dir(&dir).map_err(err)?;
         templates::write(t, &dir).map_err(err)?;
         "main.tex".to_string()

@@ -20,11 +20,13 @@ import { toast } from "#lib/ui/toast.svelte.ts";
 import { fileKind } from "#lib/tree/kinds.ts";
 import { langFor, language } from "./language.ts";
 import type { BridgeDiagnostic, EditorBridge } from "./bridge.svelte.ts";
-import { diagnosticsSpec, revealLine } from "./marks.ts";
+import { diagnosticsSpec, revealLine, revealSync } from "./marks.ts";
+import { wordInSource, type WordHint } from "#lib/core/syncword.ts";
 import { openReplace, searchPanel } from "./searchPanel.ts";
 import { prefs } from "./prefs.ts";
 import { mathAt } from "./formula.ts";
 import { toggleSymbols } from "#lib/symbols/palette.svelte.ts";
+import { toggleTable } from "#lib/tables/picker.svelte.ts";
 import { comp, extensions, prefEffects } from "./setup.ts";
 
 export interface Stamp {
@@ -128,6 +130,7 @@ export class Docs implements EditorBridge {
         { id: "editor.comment", title: "Zakomentuj / odkomentuj", icon: "snippet", keys: "mod+/", when: "editorFocus", group: "Edytor", run: () => (this.view ? toggleComment(this.view) : false) },
         { id: "editor.selectNext", title: "Zaznacz następne wystąpienie", icon: "selection", keys: "ctrl+g", when: "editorFocus", group: "Edytor", run: () => (this.view ? selectNextOccurrence(this.view) : false) },
         { id: "editor.duplicate", title: "Duplikuj linię / zaznaczenie", icon: "duplicate", keys: "mod+d", when: "editorFocus", group: "Edytor", run: () => (this.view ? duplicate(this.view) : false) },
+        { id: "insert.table", title: "Generator tabel", icon: "table", keys: "mod+alt+t", group: "Wstaw", run: () => (this.view ? toggleTable(document.querySelector(".ib-tab")) : false) },
         { id: "insert.symbols", title: "Paleta symboli", icon: "omega", keys: "mod+shift+y", group: "Wstaw", run: () => (this.view ? toggleSymbols(document.querySelector(".ib-sym")) : false) },
         { id: "editor.formulaPreview", title: "Podgląd wzoru pod kursorem", icon: "sigma", group: "Edytor", run: () => void setSetting("editor.formulaPreview", !getSetting("editor.formulaPreview", true)) },
         { id: "editor.toggleInsertBar", title: "Pasek „Wstaw”", icon: "layout", keys: "mod+shift+i", group: "Edytor", run: () => void setSetting("editor.insertBar", !getSetting("editor.insertBar", true)) },
@@ -392,11 +395,13 @@ export class Docs implements EditorBridge {
   #lastLine = 0;
   #lastPath = "";
 
-  cursor(): { path: string; line: number } | null {
+  cursor(): { path: string; line: number; hint: WordHint | null } | null {
     const d = this.#inView;
     const v = this.view;
     if (!d || !v || d.kind !== "text") return null;
-    return { path: d.path, line: v.state.doc.lineAt(v.state.selection.main.head).number };
+    const head = v.state.selection.main.head;
+    const line = v.state.doc.lineAt(head);
+    return { path: d.path, line: line.number, hint: wordInSource(line.text, head - line.from) };
   }
 
   onCursor(cb: (c: { path: string; line: number }) => void): () => void {
@@ -465,11 +470,12 @@ export class Docs implements EditorBridge {
     }
   }
 
-  async reveal(path: string, line: number): Promise<void> {
+  async reveal(path: string, line: number, sync?: { hint: WordHint | null }): Promise<void> {
     await this.open(path, { focus: true });
     const d = this.find(path);
     if (d && this.#inView === d && this.view) {
-      revealLine(this.view, line);
+      if (sync) revealSync(this.view, line, sync.hint);
+      else revealLine(this.view, line);
       this.view.focus();
     }
   }

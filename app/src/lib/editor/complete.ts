@@ -75,6 +75,8 @@ const commandOptions: Completion[] = COMMANDS.map((c) => (ARGS[c] ? withArgs(c, 
 /** The suggestion for one command (exported for tests). */
 export const commandCompletion = (name: string): Completion | undefined => commandOptions.find((o) => o.label === `\\${name}`);
 
+const LIST_ENVS = new Set(["itemize", "enumerate", "description"]);
+
 function envOptions(): Completion[] {
   return ENVS.map((e) => ({
     label: e,
@@ -82,7 +84,8 @@ function envOptions(): Completion[] {
     apply: (view: EditorView, _c: Completion, from: number, to: number) => {
       // `\begin{|` → `\begin{name}` + body line + `\end{name}`; a typed `}` is eaten.
       const end = view.state.sliceDoc(to, to + 1) === "}" ? to + 1 : to;
-      snippet(`${e}}\n\t\${0}\n\\end{${e}}`)(view, null, from, end);
+      const item = LIST_ENVS.has(e) ? "\\item " : "";
+      snippet(`${e}}\n\t${item}\${0}\n\\end{${e}}`)(view, null, from, end);
     },
   }));
 }
