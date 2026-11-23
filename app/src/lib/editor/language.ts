@@ -23,7 +23,7 @@ export const T = {
   bibField: Tag.define(tags.propertyName),
 };
 
-type Arg = "heading" | "env" | "key" | "path" | "url";
+type Arg = "heading" | "env" | "key" | "path" | "url" | "chem";
 
 export interface TexState {
   /** Inside math: the closing delimiter ("$", "$$", "\\)", "\\]") or the environment name. */
@@ -54,13 +54,15 @@ for (const c of [
 ]) ARG_OF[c] = "key";
 for (const c of ["input", "include", "includeonly", "subfile", "includegraphics", "bibliography", "addbibresource", "includepdf", "lstinputlisting", "inputminted"]) ARG_OF[c] = "path";
 for (const c of ["url", "href"]) ARG_OF[c] = "url";
+// mhchem: the argument is chemistry, coloured like math (`->`, `^`, `+` stay plain characters).
+for (const c of ["ce", "cf", "pu"]) ARG_OF[c] = "chem";
 
 const MATH_ENVS = new Set(
   ["equation", "align", "gather", "multline", "eqnarray", "flalign", "alignat", "math", "displaymath", "dmath"].flatMap((e) => [e, `${e}*`]),
 );
 const VERBATIM_ENVS = new Set(["verbatim", "verbatim*", "Verbatim", "BVerbatim", "lstlisting", "minted", "comment", "filecontents", "filecontents*", "luacode", "pycode"]);
 
-const ARG_STYLE: Record<Arg, string> = { heading: "heading", env: "env", key: "key", path: "path", url: "path" };
+const ARG_STYLE: Record<Arg, string> = { heading: "heading", env: "env", key: "key", path: "path", url: "path", chem: "math" };
 
 function startState(): TexState {
   return { math: null, verbatim: null, pending: null, opt: false, arg: null, depth: 0, envOf: null, envName: "", verbDelim: null };
@@ -214,7 +216,7 @@ function token(stream: Parameters<StreamParser<TexState>["token"]>[0], s: TexSta
     }
     return s.math && !s.arg ? "math" : "bracket";
   }
-  if (ch === "[" || ch === "]") return s.math ? "math" : "bracket";
+  if (ch === "[" || ch === "]") return s.math || (s.arg === "chem" && !s.opt) ? "math" : "bracket";
 
   if (s.arg === "env") {
     stream.eatWhile(/[^{}\\%\s]/);

@@ -29,7 +29,7 @@ const COMMANDS = [
   "newcommand", "renewcommand", "input", "include", "bibliography", "bibliographystyle", "printbibliography",
   "addbibresource", "textwidth", "linewidth", "hspace", "vspace", "newline", "newpage", "clearpage", "noindent",
   "url", "href", "small", "large", "Large", "LARGE", "footnotesize", "tiny", "huge", "today", "author", "title", "date",
-  "frametitle", "pause", "quad", "qquad", "displaystyle", "limits",
+  "frametitle", "ce", "pu", "pause", "quad", "qquad", "displaystyle", "limits",
 ];
 
 const ENVS = [
@@ -46,7 +46,7 @@ const ARGS: Record<string, number> = {
     ("textbf textit underline emph texttt textsc footnote section subsection subsubsection chapter part paragraph caption label ref " +
       "eqref pageref cite citep citet begin end sqrt mathbf mathrm mathcal mathbb mathit operatorname text hat bar vec tilde dot ddot " +
       "overline underbrace overbrace includegraphics usepackage documentclass input include bibliography bibliographystyle " +
-      "printbibliography addbibresource hspace vspace url author title date frametitle")
+      "printbibliography addbibresource hspace vspace url author title date frametitle ce pu")
       .split(" ")
       .map((n) => [n, 1]),
   ),

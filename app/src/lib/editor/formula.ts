@@ -36,6 +36,31 @@ function toKatex(env: string | undefined, body: string): { tex: string; display:
   return { tex: clean, display: e !== "math" };
 }
 
+/** `\ce{…}`, `\cf{…}`, `\pu{…}` (mhchem) in running text: KaTeX renders them via the mhchem extension. */
+const CHEM = /\\(ce|cf|pu)\s*(?:\[[^\]\n]*\])?\s*\{/g;
+
+function chemAt(text: string, from: number, pos: number): MathHit | null {
+  CHEM.lastIndex = 0;
+  for (let m = CHEM.exec(text); m; m = CHEM.exec(text)) {
+    const start = from + m.index;
+    if (start > pos) break;
+    let depth = 1;
+    let i = m.index + m[0].length;
+    for (; i < text.length && depth; i++) {
+      const c = text[i];
+      if (c === "\\") i++;
+      else if (c === "{") depth++;
+      else if (c === "}") depth--;
+    }
+    if (depth) continue;
+    const end = from + i;
+    if (pos > end) continue;
+    const body = text.slice(m.index + m[0].length, i - 1).trim();
+    return { from: start, to: end, tex: `\\${m[1] === "pu" ? "pu" : "ce"}{${body}}`, display: false };
+  }
+  return null;
+}
+
 export function mathAt(state: EditorState, pos: number): MathHit | null {
   const doc = state.doc;
   const line = doc.lineAt(pos).number;
@@ -52,7 +77,7 @@ export function mathAt(state: EditorState, pos: number): MathHit | null {
     const body = m[3] ?? m[4] ?? m[5] ?? m[6] ?? "";
     return { from: start, to: end, tex: body.trim(), display: m[3] !== undefined || m[4] !== undefined };
   }
-  return null;
+  return chemAt(text, from, pos);
 }
 
 const enabled = () => getSetting("editor.formulaPreview", true);
@@ -77,7 +102,7 @@ const field = StateField.define<MathHit | null>({
 
 type Katex = typeof import("katex").default;
 let katex: Promise<Katex> | null = null;
-const load = (): Promise<Katex> => (katex ??= Promise.all([import("katex"), import("katex/dist/katex.min.css")]).then(([k]) => k.default));
+const load = (): Promise<Katex> => (katex ??= Promise.all([import("katex"), import("katex/contrib/mhchem"), import("katex/dist/katex.min.css")]).then(([k]) => k.default));
 
 // One shared `create`: CodeMirror then keeps the DOM while the formula is edited and only
 // calls `update`, so the preview does not flicker on every keystroke.

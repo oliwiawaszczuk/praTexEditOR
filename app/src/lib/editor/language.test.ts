@@ -28,6 +28,14 @@ const styleOf = (lines: [string, string | null][][], text: string): (string | nu
   lines.flat().filter(([t]) => t.includes(text)).map(([, s]) => s);
 
 describe("latex tokenizer", () => {
+  it("colours the mhchem argument as math", () => {
+    const l = lex<TexState>(latexParser, "tekst \\ce{2H2 + O2 -> [Cu]^2+} dalej");
+    expect(styleOf(l, "\\ce")).toEqual(["command"]);
+    expect(styleOf(l, "2H2")).toEqual(["math"]);
+    expect(styleOf(l, "[")).toEqual(["math"]);
+    expect(styleOf(l, "]")).toEqual(["math"]);
+    expect(styleOf(l, "dalej")).toEqual([null]);
+  });
   it("colours commands, environments, headings and keys", () => {
     const l = lex<TexState>(latexParser, "\\section*{Wstęp \\emph{nowy}}\n\\begin{figure}[h]\n\\includegraphics[width=0.5\\textwidth]{img/wykres.png}\n\\label{fig:a} zob.~\\ref{fig:a}\n\\end{figure}");
     expect(styleOf(l, "\\section*")).toEqual(["command"]);
