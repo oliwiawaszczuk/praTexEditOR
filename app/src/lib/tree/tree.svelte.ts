@@ -60,6 +60,9 @@ export class TreeStore {
   /** Path just created/moved in → briefly highlighted. */
   flash = $state<string | null>(null);
 
+  /** Numbered chapter folders: the one in the main file (`%% ROZDZIAŁY content`) and the folders of its chapters. */
+  chapters = $state<string[]>([]);
+
   readonly rows: Row[] = $derived.by(() => this.flatten());
 
   #project: () => Project;
@@ -86,10 +89,15 @@ export class TreeStore {
     this.#unsub = on<{ pid: string; dirs: string[] }>("fs-changed", (e) => {
       if (e.pid === this.project.id) void this.refresh(e.dirs);
     });
+    void this.loadChapters();
     const p = this.project;
     await Promise.all(
       [...this.expanded].map((d) => (p.roots.some((r) => isUnder(d, r)) ? this.load(d) : this.expanded.delete(d))),
     );
+  }
+
+  async loadChapters(): Promise<void> {
+    this.chapters = await call<string[]>("chapters_info", { pid: this.project.id }).catch(() => []);
   }
 
   stop(): void {
@@ -120,6 +128,9 @@ export class TreeStore {
     // A root that reappeared (disk plugged back in).
     for (const r of this.project.roots) if (this.missing.has(r) && dirs.some((d) => isUnder(d, r))) todo.add(r);
     await Promise.all([...todo].map((d) => this.load(d)));
+    const main = this.project.main;
+    // The marker line may have just been typed into (or deleted from) the main file; a new folder may match a chapter.
+    if (main && dirs.some((d) => d === parentDir(main) || this.chapters.some((c) => isUnder(d, c)))) void this.loadChapters();
     if (this.filter) void this.search(this.filter);
   }
 
@@ -229,6 +240,7 @@ export class TreeStore {
   }
 
   async startCreate(dir: string, folder: boolean): Promise<void> {
+    if (!folder && this.chapters.includes(dir)) return this.newChapter(dir);
     await this.expand(dir);
     this.editing = { mode: "create", dir, folder };
   }
@@ -259,6 +271,17 @@ export class TreeStore {
         await this.load(parentDir(e.path));
         this.select(to);
         await this.#fixMain([[e.path, to]]);
+        const dir = parentDir(to);
+        if (this.chapters.includes(dir)) {
+          // A changed number is a move: the renamed file takes the place of the one that had it.
+          const num = (p: string): number => Number(baseName(p).match(/^\d+/)?.[0] ?? Infinity);
+          const list = this.#chapterFiles(dir).sort((a, b) => (num(a) === num(b) ? (a === to ? -1 : b === to ? 1 : 0) : num(a) < num(b) ? -1 : 1));
+          const moves = await this.#renumber(dir, list);
+          const final = moves.find(([from]) => from === to)?.[1] ?? to;
+          this.select(final);
+          if (moves.length) this.#offerUndo(dir, moves, "Zmieniono numerację");
+          return;
+        }
         toast(`Zmieniono nazwę: ${name}`, {
           icon: "undo",
           action: () => void this.#undoRename(to, baseName(e.path)),
@@ -280,8 +303,91 @@ export class TreeStore {
     }
   }
 
+  // ── Numbered chapter folder ────────────────────────────────────────────────
+
+  #chapterFiles(dir: string): string[] {
+    return (this.children.get(dir) ?? []).filter((e) => !e.dir && /\.tex$/i.test(e.name)).map((e) => e.path);
+  }
+
+  /** Number the folder's files in `order` (null = as named now); open tabs follow the new names. */
+  async #renumber(dir: string, order: string[] | null): Promise<[string, string][]> {
+    const moves = await call<[string, string][]>("chapters_renumber", { pid: this.project.id, dir, order });
+    if (moves.length) {
+      await this.load(dir);
+      // A chapter's folder moved with its file: the open listing of it is stale.
+      for (const [from, to] of moves) if (this.children.has(from)) this.#followDir(from, to);
+      // The `\include` block rewrites itself: no "update references?" question.
+      await this.#fixMain(moves, false);
+    }
+    return moves;
+  }
+
+  #followDir(from: string, to: string): void {
+    this.children.delete(from);
+    if (this.expanded.delete(from)) this.expanded.add(to);
+    void this.load(to);
+  }
+
+  #offerUndo(dir: string, moves: [string, string][], label: string): void {
+    toast(label, {
+      icon: "undo",
+      action: () =>
+        void (async () => {
+          try {
+            const back = moves.map(([a, b]) => [b, a] as [string, string]);
+            await call("chapters_apply", { pid: this.project.id, dir, moves: back });
+            await this.load(dir);
+            for (const [from, to] of back) if (this.children.has(from)) this.#followDir(from, to);
+            await this.#fixMain(back, false);
+          } catch (err) {
+            void showError("Nie udało się cofnąć", err);
+          }
+        })(),
+    });
+  }
+
+  /** New chapter at the end of the list, name ready to edit. */
+  async newChapter(dir: string): Promise<void> {
+    try {
+      const path = await call<string>("chapters_new", { pid: this.project.id, dir });
+      await this.expand(dir);
+      await this.load(dir);
+      this.select(path);
+      this.#flash(path);
+      this.startRename(path);
+    } catch (err) {
+      void showError("Nie udało się utworzyć", err);
+    }
+  }
+
+  /** `items` dropped on the row `over` of the chapter folder: they take its place. */
+  async reorder(dir: string, items: string[], over: string | null): Promise<void> {
+    const list = this.#chapterFiles(dir);
+    const moving = list.filter((p) => items.includes(p));
+    if (!moving.length) return;
+    const rest = list.filter((p) => !items.includes(p));
+    let at = rest.length;
+    if (over && list.includes(over) && !items.includes(over)) {
+      // Dragged down → lands after the target, dragged up → before it.
+      const down = list.indexOf(moving[0]) < list.indexOf(over);
+      at = rest.indexOf(over) + (down ? 1 : 0);
+    }
+    rest.splice(at, 0, ...moving);
+    try {
+      const moves = await this.#renumber(dir, rest);
+      if (!moves.length) return;
+      const now = new Map(moves);
+      this.selected.clear();
+      for (const p of moving) this.selected.add(now.get(p) ?? p);
+      this.#flash(now.get(moving[0]) ?? moving[0]);
+      this.#offerUndo(dir, moves, "Zmieniono kolejność");
+    } catch (err) {
+      void showError("Nie udało się zmienić kolejności", err);
+    }
+  }
+
   /** Something moved or was renamed → open tabs and the main file follow it. */
-  async #fixMain(moves: [string, string][]): Promise<void> {
+  async #fixMain(moves: [string, string][], refs = true): Promise<void> {
     editor()?.moved(moves);
     const main = this.project.main;
     if (main) {
@@ -292,7 +398,7 @@ export class TreeStore {
         }
       }
     }
-    void updateRefs(this.project.id, moves);
+    if (refs) void updateRefs(this.project.id, moves);
   }
 
   /** Move (or copy) into `target`. Name clashes → one question for the whole batch. */
@@ -323,6 +429,12 @@ export class TreeStore {
       }
       await Promise.all([...new Set([target, ...sources.map(parentDir)])].map((d) => this.load(d)));
       if (!copy) await this.#fixMain(r.done);
+      // New arrivals go to the end, a vacated number closes up.
+      for (const dir of new Set([target, ...sources.map(parentDir)])) {
+        if (!this.chapters.includes(dir)) continue;
+        const moved = new Map(await this.#renumber(dir, null));
+        r.done = r.done.map(([a, b]) => [a, moved.get(b) ?? b]);
+      }
       if (r.done.length) {
         this.selected.clear();
         for (const [, to] of r.done) this.selected.add(to);
@@ -369,6 +481,7 @@ export class TreeStore {
       await call("fs_trash", { pid: this.project.id, paths });
       for (const p of paths) this.selected.delete(p);
       await this.refresh([...new Set(paths.map(parentDir))]);
+      for (const dir of new Set(paths.map(parentDir))) if (this.chapters.includes(dir)) await this.#renumber(dir, null);
       toast(paths.length === 1 ? `„${baseName(paths[0])}” w koszu` : `${paths.length} elementy w koszu`, { icon: "trash" });
     } catch (err) {
       void showError("Nie udało się przenieść do kosza", err);

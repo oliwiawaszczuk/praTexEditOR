@@ -30,7 +30,7 @@ export interface EditorBridge {
   /** Undo the last edit of the visible file. */
   undo(): void;
   /** File, 1-based line and word (SyncTeX hint) of the cursor in the visible text tab. */
-  cursor(): { path: string; line: number; hint: WordHint | null } | null;
+  cursor(): { path: string; line: number; text: string; hint: WordHint | null } | null;
   /** Cursor moved to another line (or another file); returns the unsubscribe. */
   onCursor(cb: (c: { path: string; line: number }) => void): () => void;
 }

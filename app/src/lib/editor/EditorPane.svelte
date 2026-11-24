@@ -8,7 +8,7 @@
   import { keysOf } from "#lib/core/commands.svelte.ts";
   import { currentProject, type Project } from "#lib/core/projects.svelte.ts";
   import { call, protoUrl } from "#lib/core/tauri.ts";
-  import { revealInOs, revealLabel } from "#lib/core/os.ts";
+  import { copyAbsPath, revealInOs, revealLabel } from "#lib/core/os.ts";
   import Icon, { type IconName } from "#lib/ui/Icon.svelte";
   import { formatSize } from "#lib/ui/format.ts";
   import { tip } from "#lib/ui/tooltip.svelte.ts";
@@ -138,6 +138,7 @@
         {#if d.kind === "missing"}
           <button class="btn" onclick={() => void docs.close(d.path)}><Icon name="close" size={14} /></button>
         {:else}
+          <button class="btn" use:tip={"Kopiuj ścieżkę bezwzględną"} onclick={() => void copyAbsPath(d.path)}><Icon name="copy" size={14} /></button>
           <button class="btn" use:tip={revealLabel()} onclick={() => revealInOs(project.id, d.path)}><Icon name="reveal" size={14} /></button>
         {/if}
       </div>

@@ -187,6 +187,7 @@ fn restart_watch(app: &AppHandle, p: &Project) {
     let live: Vec<PathBuf> = p.roots.iter().filter(|r| r.is_dir()).cloned().collect();
     let app2 = app.clone();
     watch.start(p.id.clone(), &live, move |change| {
+        crate::chapters::on_change(&app2, &change);
         let _ = app2.emit("fs-changed", change);
     });
 }

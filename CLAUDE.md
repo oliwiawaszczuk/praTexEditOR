@@ -39,6 +39,8 @@ app/src-tauri/src/
   git/             libgit2 bez sieci (`git2`, bez `git` w systemie): repo = root projektu; mod (repos, status, log),
                    diff (changes + file_diff: from/to = HEAD|index|work|root|<commit>), ops (init, discard plik/blok,
                    restore z commita → stary plik do kosza). Celowo BEZ commit/stage w appce; repo szukane w górę drzewa
+  bada.rs          klient furtki praBada (`link.sock`, ws.list / open) + `RunEvent::Opened` → `external_pending_take` (plik z „Otwórz w…”); front: `lib/bada/`
+                   (projekt ↔ workspace praBada w `wsGet("bada.ws")`, ⌘⌥B = skok do `[[ID]]` z linii). Tu jest źródło prawdy: praBada nigdy nie pisze po `.tex`/`.bib`
   synctex.rs       doc.synctex.gz → Index (hboxy + punkty słów), forward (plik, linia → prostokąty),
                    inverse (strona, x, y → plik, linia); cache per projekt wg mtime, warm() po kompilacji
   protocol.rs      pratex:// — pdf/<pid> (PDF z cache) i file/<pid>?p= (plik projektu przez guard), Range

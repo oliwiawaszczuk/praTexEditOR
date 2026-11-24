@@ -3,7 +3,7 @@
   // A folder dropped from Finder anywhere here becomes a project.
   import { forgetProject, openProject, projects, PROJECT_COLORS, updateProject, type Project } from "#lib/core/projects.svelte.ts";
   import { call } from "#lib/core/tauri.ts";
-  import { revealInOs, revealLabel } from "#lib/core/os.ts";
+  import { copyAbsPath, revealInOs, revealLabel } from "#lib/core/os.ts";
   import { openMenu } from "#lib/ui/contextMenu.svelte.ts";
   import { confirmAction, promptText, showError } from "#lib/ui/dialogs.svelte.ts";
   import Icon from "#lib/ui/Icon.svelte";
@@ -39,6 +39,7 @@
         },
       },
       { icon: "palette", label: "Kolor", run: () => (colorFor = { p, x: e.clientX, y: e.clientY }) },
+      { icon: "copy", label: "Kopiuj ścieżkę bezwzględną", disabled: !p.roots[0], run: () => void copyAbsPath(p.roots[0]) },
       {
         icon: "reveal",
         label: revealLabel(),

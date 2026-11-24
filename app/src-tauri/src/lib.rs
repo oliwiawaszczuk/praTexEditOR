@@ -1,4 +1,6 @@
+mod bada;
 mod boards;
+mod chapters;
 mod core;
 mod engine;
 mod fs;
@@ -117,6 +119,8 @@ pub fn run() {
             boards::boards_delete,
             boards::board_get,
             boards::board_set,
+            bada::bada_send,
+            bada::external_pending_take,
             boards::board_asset_add,
             boards::board_asset_from_path,
             boards::board_export_png,
@@ -178,6 +182,10 @@ pub fn run() {
             fs::fs_search,
             fs::fs_create,
             fs::fs_rename,
+            chapters::chapters_info,
+            chapters::chapters_renumber,
+            chapters::chapters_apply,
+            chapters::chapters_new,
             fs::fs_transfer,
             fs::fs_trash,
             fs::fs_duplicate,
@@ -228,6 +236,8 @@ pub fn run() {
             }
         }
         RunEvent::Exit => app.state::<Procs>().kill_all(),
+        #[cfg(target_os = "macos")]
+        RunEvent::Opened { urls } => bada::opened(app, &urls),
         _ => {}
     });
 }

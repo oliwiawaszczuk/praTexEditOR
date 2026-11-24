@@ -62,6 +62,12 @@ pub struct BuildOpts {
     /// Studia: after a clean build put the PDF in the subject folder.
     #[serde(default)]
     pub export: bool,
+    /// Compile only the `\include`d file open in the editor and `chunk` neighbours on each
+    /// side (system TeX, no Studia). Needs `focus`; anything else builds the whole document.
+    #[serde(default)]
+    pub chunk: Option<usize>,
+    #[serde(default)]
+    pub focus: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -251,6 +257,10 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
             if !have {
                 return fail(format!("Nie znaleziono {name} w instalacji TeX"));
             }
+            let only = match (opts.chunk, &opts.focus, &plan) {
+                (Some(r), Some(f), None) => latexmk::include_only(&main, f, r),
+                _ => None,
+            };
             let work = build.join(if opts.live { "live" } else { "latexmk" });
             if let Err(e) = std::fs::create_dir_all(&work) {
                 return fail(e.to_string());
@@ -266,12 +276,21 @@ fn run_once(app: &AppHandle, pid: &str, opts: &BuildOpts, killer: &Arc<Killer>) 
                     _ => "lualatex",
                 }));
                 match tex.filter(|t| t.is_file()) {
-                    Some(t) => (latexmk::command_live(&t, &main, &work, plan.as_ref()), work),
-                    None => (latexmk::command(&bin, flag, &main, &work, plan.as_ref()), work),
+                    Some(t) => (latexmk::command_live(&t, &main, &work, plan.as_ref(), only.as_deref()), work),
+                    None => (latexmk::command(&bin, flag, &main, &work, plan.as_ref(), only.as_deref()), work),
                 }
             } else {
                 latexmk::purge_poisoned(&work, 4);
-                (latexmk::command(&bin, flag, &main, &work, plan.as_ref()), work)
+                let mut cmd = latexmk::command(&bin, flag, &main, &work, plan.as_ref(), only.as_deref());
+                // latexmk does not see a changed `\includeonly` as a changed source and would call the
+                // old PDF up to date: force one run when the chunk differs from the last full build's.
+                let stamp = work.join(".only");
+                let now = only.clone().unwrap_or_default();
+                if std::fs::read_to_string(&stamp).unwrap_or_default() != now {
+                    cmd.arg("-g");
+                    let _ = std::fs::write(&stamp, &now);
+                }
+                (cmd, work)
             }
         }
     };

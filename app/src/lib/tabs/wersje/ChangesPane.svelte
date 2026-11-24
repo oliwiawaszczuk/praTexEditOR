@@ -4,6 +4,7 @@
   // (old content goes to the trash). Commits are made outside the app.
   import type { FileSummary, GitStore } from "#lib/git/git.svelte.ts";
   import { fileKind, kindColor } from "#lib/tree/kinds.ts";
+  import { copyAbsPath } from "#lib/core/os.ts";
   import { openMenu } from "#lib/ui/contextMenu.svelte.ts";
   import Icon from "#lib/ui/Icon.svelte";
   import { tip } from "#lib/ui/tooltip.svelte.ts";
@@ -20,6 +21,7 @@
     openMenu(e, [
       { icon: "edit", label: "Otwórz w edytorze", disabled: f.status === "deleted", run: () => void git.openInEditor(f.path) },
       { icon: "history", label: "Historia pliku", run: () => git.setHistPath(f.path) },
+      { icon: "copy", label: "Kopiuj ścieżkę bezwzględną", run: () => void copyAbsPath(git.abs(f.path)) },
       "sep",
       { icon: "undo", label: "Odrzuć zmiany w pliku…", danger: true, run: () => void git.discard([f.path]) },
     ]);

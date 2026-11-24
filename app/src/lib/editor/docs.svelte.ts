@@ -395,13 +395,13 @@ export class Docs implements EditorBridge {
   #lastLine = 0;
   #lastPath = "";
 
-  cursor(): { path: string; line: number; hint: WordHint | null } | null {
+  cursor(): { path: string; line: number; text: string; hint: WordHint | null } | null {
     const d = this.#inView;
     const v = this.view;
     if (!d || !v || d.kind !== "text") return null;
     const head = v.state.selection.main.head;
     const line = v.state.doc.lineAt(head);
-    return { path: d.path, line: line.number, hint: wordInSource(line.text, head - line.from) };
+    return { path: d.path, line: line.number, text: line.text, hint: wordInSource(line.text, head - line.from) };
   }
 
   onCursor(cb: (c: { path: string; line: number }) => void): () => void {

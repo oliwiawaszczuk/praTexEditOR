@@ -373,7 +373,7 @@ mod tests {
         let note = root.join("Przyklad/content/01_boksy.tex");
         for t in [Target { subject: root.join("Przyklad"), note: None }, Target { subject: root.join("Przyklad"), note: Some(note) }] {
             let p = plan(&project, &t, &root.join("cache")).unwrap();
-            let st = crate::engine::latexmk::command(&bin, "-lualatex", &p.wrapper, &out, Some(&p)).status().unwrap();
+            let st = crate::engine::latexmk::command(&bin, "-lualatex", &p.wrapper, &out, Some(&p), None).status().unwrap();
             assert!(st.success(), "{t:?}");
             assert!(out.join(p.wrapper.file_stem().unwrap()).with_extension("pdf").is_file());
         }

@@ -17,11 +17,16 @@ export interface Ghost {
 
 let ghost = $state<Ghost | null>(null);
 let target = $state<string | null>(null);
+/** Row under the pointer (`data-path`) and the dragged paths: the tree draws an insertion line from them. */
+let overRow = $state<string | null>(null);
+let held = $state<string[]>([]);
 /** Finder drag currently over the window. */
 let osActive = $state(false);
 
 export const dragGhost = (): Ghost | null => ghost;
 export const dropTarget = (): string | null => target;
+export const dropRow = (): string | null => overRow;
+export const dragItems = (): string[] => held;
 export const osDragging = (): boolean => osActive;
 
 function hit(x: number, y: number): string | null {
@@ -82,6 +87,8 @@ export function pressDrag(e: PointerEvent, opts: DragOptions): void {
       document.body.classList.add("dragging");
     }
     lastY = ev.clientY;
+    held = opts.items;
+    overRow = document.elementFromPoint(ev.clientX, ev.clientY)?.closest<HTMLElement>("[data-path]")?.dataset.path ?? null;
     ghost = { x: ev.clientX, y: ev.clientY, label: opts.label, count: opts.items.length, copy: ev.altKey };
     const t = hit(ev.clientX, ev.clientY);
     setTarget(t && (!t.startsWith("@") || t === "@editor") ? t : null, opts.onHoverExpand);
@@ -98,6 +105,8 @@ export function pressDrag(e: PointerEvent, opts: DragOptions): void {
     const t = target;
     const copy = ev.altKey;
     ghost = null;
+    overRow = null;
+    held = [];
     setTarget(null);
     const at = "clientX" in ev ? { x: ev.clientX, y: ev.clientY } : { x: 0, y: 0 };
     if (started && !cancelled && t) opts.onDrop(opts.items, t, copy, at);

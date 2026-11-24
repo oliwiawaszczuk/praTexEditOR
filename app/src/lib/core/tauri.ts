@@ -86,6 +86,8 @@ export async function onOsDrag(cb: OsDrag): Promise<() => void> {
   });
 }
 
+export const onExternalOpen = (cb: () => void): Promise<() => void> => on<null>("external-open", () => cb());
+
 export type ProjectMenuAction = "new" | "folder" | "all";
 
 export const onProjectMenu = (cb: (a: ProjectMenuAction) => void): Promise<() => void> => on<ProjectMenuAction>("project-menu", cb);

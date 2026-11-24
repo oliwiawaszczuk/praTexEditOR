@@ -4,10 +4,10 @@
   import { onDestroy, onMount, tick } from "svelte";
   import { getSetting } from "#lib/core/appSettings.svelte.ts";
   import { keysOf, register } from "#lib/core/commands.svelte.ts";
-  import { currentProject, removeRoot, setRoot, type Project } from "#lib/core/projects.svelte.ts";
+  import { currentProject, parentDir, removeRoot, setRoot, type Project } from "#lib/core/projects.svelte.ts";
   import { pickDirectory } from "#lib/core/tauri.ts";
   import { activeBuild } from "#lib/build/build.svelte.ts";
-  import { revealLabel } from "#lib/core/os.ts";
+  import { copyAbsPath, revealLabel } from "#lib/core/os.ts";
   import { activeGit } from "#lib/git/git.svelte.ts";
   import { dropFiles } from "#lib/images/images.svelte.ts";
   import { editor } from "#lib/editor/bridge.svelte.ts";
@@ -17,7 +17,7 @@
   import { toast } from "#lib/ui/toast.svelte.ts";
   import { tip } from "#lib/ui/tooltip.svelte.ts";
   import { noteOf, subjectName, subjectOf } from "#lib/studia/target.ts";
-  import { dropTarget, pressDrag } from "./dnd.svelte.ts";
+  import { dragItems, dropRow, dropTarget, pressDrag } from "./dnd.svelte.ts";
   import { fileKind, KIND_ICON, kindColor } from "./kinds.ts";
   import { setActiveTree, TreeStore, type Entry, type Row } from "./tree.svelte.ts";
 
@@ -66,6 +66,15 @@
   const last = $derived(Math.min(rows.length, Math.ceil((scrollTop + height) / ROW) + OVERSCAN));
   const visible = $derived(rows.slice(first, last));
   const over = $derived(dropTarget());
+  // Reordering in a numbered folder: a thick line at the place the dragged files will land.
+  const slot = $derived.by((): { path: string; below: boolean } | null => {
+    const row = dropRow();
+    const items = dragItems();
+    if (!row || over === null || !tree.chapters.includes(over) || !items.length || items.some((p) => parentDir(p) !== over) || items.includes(row)) return null;
+    if (parentDir(row) !== over) return null;
+    const idx = (path: string): number => tree.rows.findIndex((r) => r.path === path);
+    return { path: row, below: idx(items[0]) < idx(row) };
+  });
 
   function isMain(path: string): boolean {
     return project.main === path;
@@ -96,7 +105,15 @@
       scroller,
       onHoverExpand: (dir) => void tree.expand(dir),
       // Onto the editor: reference the file there (image → \includegraphics, .tex → \input).
-      onDrop: (items, target, copy, at) => void (target === "@editor" ? dropFiles(items, at) : tree.transfer(items, target, copy)),
+      onDrop: (items, target, copy, at) => {
+        if (target === "@editor") return void dropFiles(items, at);
+        // Inside the numbered folder a drop on a row is a move to that place in the list.
+        if (!copy && tree.chapters.includes(target) && items.every((p) => parentDir(p) === target)) {
+          const over = document.elementFromPoint(at.x, at.y)?.closest<HTMLElement>("[data-path]")?.dataset.path ?? null;
+          return void tree.reorder(target, items, over);
+        }
+        void tree.transfer(items, target, copy);
+      },
     });
   }
 
@@ -114,6 +131,7 @@
     if (r.root !== undefined) {
       if (r.missing) items.push({ icon: "folderOpen", label: "Wskaż folder ponownie", run: () => void relink(r.path) });
       items.push(
+        { icon: "copy", label: "Kopiuj ścieżkę bezwzględną", run: () => void copyAbsPath(r.path) },
         { icon: "reveal", label: revealLabel(), disabled: r.missing, run: () => tree.revealInOs(r.path) },
         {
           icon: "unlink",
@@ -129,6 +147,7 @@
         { icon: "edit", label: "Zmień nazwę", keys: keysOf("tree.rename"), disabled: many, run: () => tree.startRename(r.path) },
         { icon: "duplicate", label: "Duplikuj", disabled: many, run: () => void tree.duplicate(r.path) },
         { icon: "copy", label: "Kopiuj ścieżkę względną", disabled: many, run: () => void copyRel(r.path) },
+        { icon: "copy", label: "Kopiuj ścieżkę bezwzględną", disabled: many, run: () => void copyAbsPath(r.path) },
         { icon: "reveal", label: revealLabel(), disabled: many, run: () => tree.revealInOs(r.path) },
         "sep",
         { icon: "trash", label: many ? `Do kosza (${targets.length})` : "Do kosza", keys: keysOf("tree.trash"), danger: true, run: () => void tree.trash(targets) },
@@ -359,6 +378,7 @@
             { icon: "filePlus", label: "Nowy plik", run: () => void tree.startCreate(project.roots[0], false) },
             { icon: "folderPlus", label: "Nowy folder", run: () => void tree.startCreate(project.roots[0], true) },
             { icon: "link", label: "Podepnij folder", run: addRoot },
+            { icon: "copy", label: "Kopiuj ścieżkę bezwzględną", run: () => void copyAbsPath(project.roots[0]) },
           ]);
       }}
     >
@@ -373,12 +393,15 @@
             class:sel={tree.selected.has(r.path)}
             class:focus={tree.focused === r.path}
             class:drop={over === r.dropDir && (r.dir || r.input)}
-            class:dropin={over !== null && over === r.dropDir && !r.dir}
+            class:dropin={over !== null && over === r.dropDir && !r.dir && !slot}
+            class:slot-above={slot?.path === r.path && !slot.below}
+            class:slot-below={slot?.path === r.path && slot.below}
             class:missing={r.missing}
             class:flash={tree.flash === r.path}
             style:top="{(first + k) * ROW}px"
             style:padding-left="{6 + r.depth * 14}px"
             data-drop={r.dropDir}
+            data-path={r.path}
             role="treeitem"
             aria-selected={tree.selected.has(r.path)}
             tabindex="-1"
@@ -514,6 +537,23 @@
   .row.drop {
     background: var(--accent-a15);
     border-color: var(--accent-a40);
+  }
+  .row.slot-above::after,
+  .row.slot-below::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+    pointer-events: none;
+  }
+  .row.slot-above::after {
+    top: -2px;
+  }
+  .row.slot-below::after {
+    bottom: -2px;
   }
   .row.dropin {
     background: var(--accent-a10);

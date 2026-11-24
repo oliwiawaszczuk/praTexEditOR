@@ -100,7 +100,7 @@ pub fn detect(refresh: bool) -> Installed {
 
 /// The file argument and working dir: next to `main`, or — for a Studia wrapper — the file
 /// by full path, run from the subject folder with the project root on TEXINPUTS.
-fn place(cmd: &mut Command, main: &Path, plan: Option<&Plan>) {
+fn place(cmd: &mut Command, main: &Path, plan: Option<&Plan>, pre: Option<&str>) {
     match plan {
         Some(p) => {
             cmd.arg(main).current_dir(&p.subject);
@@ -113,7 +113,17 @@ fn place(cmd: &mut Command, main: &Path, plan: Option<&Plan>) {
             }
         }
         None => {
-            cmd.arg(main.file_name().unwrap_or_default());
+            let name = main.file_name().unwrap_or_default();
+            match pre {
+                // Code before the file only works as one argument; the jobname keeps `main.pdf`/`main.aux`.
+                Some(pre) => {
+                    cmd.arg(format!("-jobname={}", main.file_stem().unwrap_or_default().to_string_lossy()));
+                    cmd.arg(format!("{pre}\\input{{{}}}", name.to_string_lossy()));
+                }
+                None => {
+                    cmd.arg(name);
+                }
+            }
             if let Some(dir) = main.parent().filter(|d| !d.as_os_str().is_empty()) {
                 cmd.current_dir(dir);
             }
@@ -121,16 +131,54 @@ fn place(cmd: &mut Command, main: &Path, plan: Option<&Plan>) {
     }
 }
 
+/// `\include` names of `main` (comments skipped) around the one that is `focus`: `radius` files
+/// on each side. None when `focus` is not an included file — then the whole document builds.
+pub fn include_only(main: &Path, focus: &Path, radius: usize) -> Option<String> {
+    let dir = main.parent()?;
+    let rel = focus.strip_prefix(dir).ok()?.with_extension("");
+    let rel = rel.to_string_lossy().replace('\\', "/");
+    let src = std::fs::read_to_string(main).ok()?;
+    let mut names: Vec<String> = Vec::new();
+    for line in src.lines() {
+        let mut code = line;
+        if let Some(i) = line.char_indices().find(|&(i, c)| c == '%' && !line[..i].ends_with('\\')).map(|(i, _)| i) {
+            code = &line[..i];
+        }
+        let mut rest = code;
+        while let Some(i) = rest.find("\\include{") {
+            let after = &rest[i + "\\include{".len()..];
+            let Some(end) = after.find('}') else { break };
+            let n = after[..end].trim().trim_end_matches(".tex").to_string();
+            if !n.is_empty() {
+                names.push(n);
+            }
+            rest = &after[end..];
+        }
+    }
+    // A file in a chapter's folder belongs to the chapter file that `\input`s it.
+    let mut key = rel.as_str();
+    let at = loop {
+        if let Some(i) = names.iter().position(|n| n == key) {
+            break i;
+        }
+        key = key.rsplit_once('/')?.0;
+    };
+    Some(names[at.saturating_sub(radius)..=(at + radius).min(names.len() - 1)].join(","))
+}
+
 /// `latexmk -pdf|-xelatex|-lualatex` for `main`, all outputs and aux files in `outdir`.
 /// `flag` is the latexmk engine switch.
-pub fn command(bin: &Path, flag: &str, main: &Path, outdir: &Path, plan: Option<&Plan>) -> Command {
+pub fn command(bin: &Path, flag: &str, main: &Path, outdir: &Path, plan: Option<&Plan>, only: Option<&str>) -> Command {
     let mut cmd = Command::new(bin);
     cmd.arg(flag)
         .args(["-interaction=nonstopmode", "-file-line-error", "-synctex=1"])
         // Keep going past errors (reruns, bibtex): the PDF shows as much as possible.
         .arg("-f")
         .arg(format!("-outdir={}", outdir.display()));
-    place(&mut cmd, main, plan);
+    if let Some(o) = only {
+        cmd.arg(format!("-usepretex=\\includeonly{{{o}}}"));
+    }
+    place(&mut cmd, main, plan, None);
     // latexmk calls pdflatex/bibtex by name: put the TeX bin folder first on PATH.
     if let Some(texbin) = bin.parent() {
         prepend_path(&mut cmd, texbin);
@@ -152,11 +200,12 @@ pub fn prepend_path(cmd: &mut Command, dir: &Path) {
 /// One bare pass of the engine itself (no latexmk, no bibliography, no reruns) into the
 /// same `outdir` latexmk uses, so references and citations still come from the aux/bbl
 /// of the last full build. This is the typing preview: about half the time of a full run.
-pub fn command_live(engine: &Path, main: &Path, outdir: &Path, plan: Option<&Plan>) -> Command {
+pub fn command_live(engine: &Path, main: &Path, outdir: &Path, plan: Option<&Plan>, only: Option<&str>) -> Command {
     let mut cmd = Command::new(engine);
     cmd.args(["-interaction=nonstopmode", "-file-line-error", "-synctex=1"])
         .arg(format!("-output-directory={}", outdir.display()));
-    place(&mut cmd, main, plan);
+    let pre = only.map(|o| format!("\\includeonly{{{o}}}"));
+    place(&mut cmd, main, plan, pre.as_deref());
     if let Some(texbin) = engine.parent() {
         prepend_path(&mut cmd, texbin);
     }
@@ -269,5 +318,21 @@ mod seed_tests {
         std::fs::write(d.path().join("main.aux"), "fine").unwrap();
         assert_eq!(purge_poisoned(d.path(), 4), 1);
         assert!(!d.path().join("main.toc").exists() && d.path().join("main.aux").exists());
+    }
+
+    #[test]
+    fn include_only_picks_neighbours() {
+        let d = tempfile::tempdir().unwrap();
+        let main = d.path().join("main.tex");
+        std::fs::write(&main, "\\include{content/a}\n% \\include{content/x}\n\\include{content/b}\\include{content/c.tex}\n\\include{content/d}\n").unwrap();
+        let f = |n: &str| d.path().join("content").join(n);
+        assert_eq!(include_only(&main, &f("b.tex"), 0).as_deref(), Some("content/b"));
+        assert_eq!(include_only(&main, &f("b.tex"), 1).as_deref(), Some("content/a,content/b,content/c"));
+        assert_eq!(include_only(&main, &f("a.tex"), 1).as_deref(), Some("content/a,content/b"));
+        assert_eq!(include_only(&main, &f("d.tex"), 5).as_deref(), Some("content/a,content/b,content/c,content/d"));
+        assert_eq!(include_only(&main, &f("x.tex"), 1), None);
+        // A file in the folder of chapter `b` previews chapter `b`.
+        assert_eq!(include_only(&main, &d.path().join("content/b/01_sub.tex"), 0).as_deref(), Some("content/b"));
+        assert_eq!(include_only(&main, &d.path().join("preamble.tex"), 1), None);
     }
 }

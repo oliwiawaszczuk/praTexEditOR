@@ -19,8 +19,9 @@
   import ShortcutsModal from "#lib/palette/ShortcutsModal.svelte";
   import { openShortcuts } from "#lib/palette/shortcuts.svelte.ts";
   import { isMac } from "#lib/core/keys.ts";
-  import { closeProject, currentProject, flushProject, leaveProject, loadProjects, restoreLastProject } from "#lib/core/projects.svelte.ts";
-  import { call, onCloseRequested, onOsDrag, onProjectMenu } from "#lib/core/tauri.ts";
+  import { closeProject, currentProject, flushProject, leaveProject, loadProjects, openProject, projects, restoreLastProject } from "#lib/core/projects.svelte.ts";
+  import { call, onCloseRequested, onExternalOpen, onOsDrag, onProjectMenu } from "#lib/core/tauri.ts";
+  import { linkProject, openInBada, openRefAt } from "#lib/bada/bada.ts";
   import ColorPopupHost from "#lib/ui/ColorPopupHost.svelte";
   import ContextMenuHost from "#lib/ui/ContextMenuHost.svelte";
   import ProjectChip from "#lib/ui/ProjectChip.svelte";
@@ -181,6 +182,17 @@
         })();
       },
     },
+    { id: "app.bada.open", title: "praBada: otwórz projekt", icon: "link", group: "praBada", keywords: "badania", run: () => (project ? void openInBada() : false) },
+    { id: "app.bada.link", title: "praBada: połącz z projektem…", icon: "link", group: "praBada", run: () => (project ? void linkProject() : false) },
+    {
+      id: "app.bada.ref",
+      title: "praBada: skocz do [[ID]] z tej linii",
+      icon: "link",
+      keys: "mod+alt+b",
+      when: "editorFocus",
+      group: "praBada",
+      run: () => (project ? void openRefAt(editor()?.cursor()?.text ?? null) : false),
+    },
     { id: "app.quickOpen", title: "Szybkie otwieranie pliku", icon: "search", keys: "mod+p", group: "Okno", run: () => (project ? openPalette("") : false) },
     { id: "app.shortcuts", title: "Skróty klawiszowe", icon: "help", keys: "?", group: "Okno", run: () => openShortcuts() },
   ]);
@@ -207,13 +219,28 @@
     else if (project && tab === "projekt") toast("Upuść na folder w drzewie plików", { icon: "folder" });
   }
 
+  // A file handed over by the system: open its project (the one whose folder contains it).
+  async function showExternal(): Promise<void> {
+    const path = await call<string | null>("external_pending_take");
+    if (!path || boot !== "ready") return;
+    const p = projects().find((x) => x.roots.some((r) => path === r || path.startsWith(`${r}/`)));
+    if (!p) return void toast("Ten plik nie należy do żadnego projektu praTexEditOR", { icon: "folder" });
+    await openProject(p.id);
+    goTo("projekt");
+    if (!/\.[A-Za-z0-9]+$/.test(path)) return;
+    // The editor chunk mounts with the project view; one wait covers a cold start.
+    if (!editor()) await new Promise((r) => setTimeout(r, 400));
+    await editor()?.open(path);
+  }
+
   onMount(() => {
-    void start();
+    void start().then(showExternal);
     // Editor saves first (it may still write positions into the project state).
     const flushAll = () => leaveProject().then(() => Promise.all([flushAppSettings(), flushProject()])).then(() => {});
     const unsubs = [
       watchEngine(),
       onCloseRequested(flushAll),
+      onExternalOpen(() => void showExternal()),
       onOsDrag({ over: osDragOver, leave: osDragLeave, drop: osDrop }),
       onProjectMenu((a) => {
         if (boot !== "ready") return;

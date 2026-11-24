@@ -2,6 +2,7 @@
 
 import { call } from "./tauri.ts";
 import { showError } from "#lib/ui/dialogs.svelte.ts";
+import { toast } from "#lib/ui/toast.svelte.ts";
 
 const ua = (): string => (typeof navigator === "undefined" ? "" : `${navigator.platform} ${navigator.userAgent}`);
 
@@ -17,4 +18,14 @@ export function revealLabel(): string {
 /** Select `path` in the system file manager; failures are shown, never swallowed. */
 export function revealInOs(pid: string, path: string): void {
   void call("fs_reveal", { pid, path }).catch((e) => showError(`Nie udało się: ${revealLabel().toLowerCase()}`, e));
+}
+
+/** Copy an absolute path to the clipboard. */
+export async function copyAbsPath(path: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(path);
+    toast(`Skopiowano: ${path}`, { icon: "copy" });
+  } catch (e) {
+    showError("Nie udało się skopiować ścieżki", e);
+  }
 }

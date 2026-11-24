@@ -27,6 +27,7 @@ export interface Diagnostic {
   hint: string | null;
 }
 
+export type Chunk = "all" | "one" | "three";
 export type EngineId = "tectonic" | "pdflatex" | "xelatex" | "lualatex";
 
 export const ENGINES: { id: EngineId; label: string }[] = [
@@ -112,6 +113,10 @@ export class Build {
       register([
         { id: "build.compile", title: "Zapisz i kompiluj", icon: "play", keys: "mod+s", run: () => void this.compileNow() },
         { id: "build.compileEditor", title: "Zapisz i kompiluj", icon: "play", keys: "mod+enter", when: "editorFocus", run: () => void this.compileNow() },
+        { id: "build.all", title: "Skompiluj cały dokument", icon: "play", run: () => void this.compileAll() },
+        { id: "build.chunkAll", title: "Podgląd: cały dokument", icon: "file", run: () => this.setChunk("all") },
+        { id: "build.chunkOne", title: "Podgląd: tylko aktywny plik (\\include)", icon: "file", run: () => this.setChunk("one") },
+        { id: "build.chunkThree", title: "Podgląd: aktywny plik i sąsiedzi (\\include)", icon: "file", run: () => this.setChunk("three") },
         { id: "build.cancel", title: "Przerwij kompilację", icon: "close", keys: "mod+.", run: () => (this.busy ? void this.cancel() : false) },
         { id: "build.toggleAuto", title: "Auto-kompilacja", icon: "refresh", run: () => this.setAuto(!this.auto) },
         { id: "build.nextError", title: "Następny błąd", icon: "chevronDown", keys: "f8", run: () => this.step(1) },
@@ -164,9 +169,14 @@ export class Build {
 
   /** The workspace tells which file is in the editor. */
   setFocus(path: string | null): void {
+    const was = this.focus;
     this.focus = path;
     const st = this.studia;
-    if (!st) return;
+    if (!st) {
+      // The compiled chunk follows the open file.
+      if (path !== was && path && /\.tex$/i.test(path) && this.chunk !== "all" && this.loaded && this.auto) this.request(this.live ? "live" : "full");
+      return;
+    }
     const subject = subjectOf(st.root, path);
     if (subject && subject !== wsGet<string | null>("studia.last", null)) wsSet("studia.last", subject);
     this.#syncTarget();
@@ -315,7 +325,18 @@ export class Build {
 
   // ── Requests ───────────────────────────────────────────────────────────────
 
-  request(mode: "full" | "live" = "full", more: { export?: boolean; target?: Target } = {}): void {
+  /** `\include` chunk compiled in the preview: everything, the open file, or it and its neighbours. */
+  get chunk(): Chunk {
+    return wsGet<Chunk>("build.chunk", "all");
+  }
+
+  setChunk(c: Chunk): void {
+    wsSet("build.chunk", c);
+    toast(c === "all" ? "Kompilacja: cały dokument" : c === "one" ? "Kompilacja: tylko aktywny plik" : "Kompilacja: aktywny plik i sąsiedzi", { icon: "play" });
+    this.request(this.live ? "live" : "full");
+  }
+
+  request(mode: "full" | "live" = "full", more: { export?: boolean; target?: Target; all?: boolean } = {}): void {
     if (this.#timer) clearTimeout(this.#timer);
     this.#timer = null;
     if (mode === "full" && this.#fullTimer) {
@@ -335,7 +356,8 @@ export class Build {
     }
     const full = mode === "full" || !!more.export;
     if (this.phase === "idle") this.phase = "pending";
-    call("build_request", { pid: this.pid, opts: { engine: this.engine, copyPdf: getSetting("build.copyPdf", false), live: !full, target, export: !!more.export } }).catch((e) => {
+    const chunk = this.studia || more.all || this.chunk === "all" ? null : this.chunk === "one" ? 0 : 1;
+    call("build_request", { pid: this.pid, opts: { engine: this.engine, copyPdf: getSetting("build.copyPdf", false), live: !full, target, export: !!more.export, chunk, focus: this.focus } }).catch((e) => {
       this.phase = "idle";
       toast(String(e instanceof Error ? e.message : e), { icon: "alert", error: true });
     });
@@ -347,6 +369,14 @@ export class Build {
     for (const p of saved) this.#echo.add(p);
     this.#echoUntil = performance.now() + 1500;
     this.request();
+  }
+
+  /** Full document once, whatever the chunk setting says. */
+  async compileAll(): Promise<void> {
+    const saved = (await editor()?.saveAll()) ?? [];
+    for (const p of saved) this.#echo.add(p);
+    this.#echoUntil = performance.now() + 1500;
+    this.request("full", { all: true });
   }
 
   async cancel(): Promise<void> {
